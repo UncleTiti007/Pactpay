@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 215 40% 12%;
+    --foreground: 0 0% 100%;
+
+    --card: 215 35% 15%;
+    --card-foreground: 0 0% 100%;
+    --card-elevated: 213 38% 17%;
+
+    --popover: 215 35% 15%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 155 100% 38%;
+    --primary-foreground: 215 40% 12%;
+
+    --secondary: 215 30% 20%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 215 25% 22%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 155 100% 38%;
+    --accent-foreground: 215 40% 12%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 25% 25%;
+    --input: 215 25% 25%;
+    --ring: 155 100% 38%;
+
+    --radius: 0.75rem;
+
+    --status-draft: 215 20% 50%;
+    --status-pending: 38 92% 50%;
+    --status-active: 217 91% 60%;
+    --status-completed: 155 100% 38%;
+    --status-disputed: 0 84% 60%;
+    --status-cancelled: 215 20% 50%;
+
+    --sidebar-background: 215 35% 15%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 155 100% 38%;
+    --sidebar-primary-foreground: 215 40% 12%;
+    --sidebar-accent: 215 30% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 215 25% 25%;
+    --sidebar-ring: 155 100% 38%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-card/50 backdrop-blur-xl border border-border/50 rounded-xl;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 40px hsl(155 100% 38% / 0.15);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-400;
+  }
+}
