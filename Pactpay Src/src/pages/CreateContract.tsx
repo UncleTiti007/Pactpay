@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Trash2, ArrowLeft, ArrowRight, Check, AlertTriangle, ShieldAlert } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
+import { DatePicker } from "@/components/ui/date-picker";
 
 type PaymentMode = "fixed" | "percentage";
 
@@ -259,17 +260,16 @@ const CreateContract = () => {
                 </div>
                 <div>
                   <Label htmlFor="deadline">Overall deadline</Label>
-                  {/* Fix: full area clickable by wrapping in label */}
-                  <label htmlFor="deadline" className="block w-full cursor-pointer">
-                    <Input
-                      id="deadline"
-                      type="date"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      className="w-full cursor-pointer"
-                      min={new Date().toISOString().split("T")[0]}
-                    />
-                  </label>
+                  <DatePicker
+                    date={deadline ? new Date(deadline) : undefined}
+                    setDate={(date) => setDeadline(date ? date.toISOString().split("T")[0] : "")}
+                    placeholder="Pick a deadline"
+                    className="mt-1"
+                    calendarProps={{
+                      fromYear: new Date().getFullYear(),
+                      toYear: new Date().getFullYear() + 2,
+                    }}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="freelancerEmail">Freelancer</Label>
@@ -371,31 +371,32 @@ const CreateContract = () => {
                           </div>
                         )}
 
-                        {/* Date picker — full area clickable */}
                         <div className="space-y-1">
-                          <label htmlFor={`due_date_${i}`} className="block w-full cursor-pointer">
-                            <Input
-                              id={`due_date_${i}`}
-                              type="date"
-                              value={m.due_date}
-                              onChange={(e) => {
-                                if (deadline && e.target.value > deadline) {
-                                  toast.error(`Milestone date cannot be after the contract deadline (${new Date(deadline).toLocaleDateString()})`);
-                                  return;
-                                }
-                                updateMilestone(i, "due_date", e.target.value);
-                              }}
-                              max={getMilestoneDateMax()}
-                              className="w-full cursor-pointer"
-                            />
-                          </label>
-                          {dateExceedsDeadline && (
-                            <p className="text-xs text-destructive flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" /> Exceeds contract deadline
-                            </p>
-                          )}
+                          <Label className="text-xs">Due Date</Label>
+                          <DatePicker
+                            date={m.due_date ? new Date(m.due_date) : undefined}
+                            setDate={(date) => {
+                              const dateStr = date ? date.toISOString().split("T")[0] : "";
+                              if (deadline && dateStr > deadline) {
+                                toast.error(`Milestone date cannot be after the contract deadline (${new Date(deadline).toLocaleDateString()})`);
+                                return;
+                              }
+                              updateMilestone(i, "due_date", dateStr);
+                            }}
+                            placeholder="Due date"
+                            className="h-9 text-sm w-full"
+                            calendarProps={{
+                              fromYear: new Date().getFullYear(),
+                              toYear: new Date().getFullYear() + 2,
+                            }}
+                          />
                         </div>
                       </div>
+                      {dateExceedsDeadline && (
+                        <p className="text-xs text-destructive flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> Exceeds contract deadline
+                        </p>
+                      )}
                     </div>
                   );
                 })}

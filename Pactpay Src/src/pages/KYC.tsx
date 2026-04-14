@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock, Calendar as CalendarIcon } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria",
@@ -136,6 +137,13 @@ const KYC = () => {
       (today < new Date(today.getFullYear(), birth.getMonth(), birth.getDate()) ? 1 : 0);
     return age >= 18;
   };
+
+  // Sync Bank Account Name with Profile Name for Individuals
+  useEffect(() => {
+    if (accountType === "individual" && fullName) {
+      setBankAccountName(fullName);
+    }
+  }, [fullName, accountType]);
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -375,10 +383,10 @@ const KYC = () => {
 
         {/* Step 1 */}
         {step === 1 && (
-          <div className="glass-card p-6 space-y-4">
+          <div className="glass-card p-6 space-y-6">
             <h2 className="text-lg font-semibold text-foreground">Personal Information</h2>
 
-            <div>
+            <div className="space-y-3">
               <Label className="flex items-center justify-between">
                 <span>Full Name <span className="text-destructive">*</span></span>
                 {isNameLocked && (
@@ -397,41 +405,41 @@ const KYC = () => {
               {isNameLocked && <p className="text-[10px] text-muted-foreground mt-1">Legal name cannot be changed after verification starts.</p>}
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label>Email <span className="text-destructive">*</span></Label>
               <Input value={user?.email || ""} readOnly className="opacity-60 cursor-not-allowed" />
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label>Phone Number <span className="text-destructive">*</span></Label>
               <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 234 567 8900" type="tel" />
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label>Date of Birth <span className="text-destructive">*</span></Label>
-              <label className="block mt-1 cursor-pointer">
-                <Input
-                  type="date"
-                  value={dob}
-                  onChange={e => setDob(e.target.value)}
-                  max={new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
-                  className="cursor-pointer w-full"
+              <DatePicker
+                  date={dob ? new Date(dob) : undefined}
+                  setDate={(date) => setDob(date ? date.toISOString().split("T")[0] : "")}
+                  placeholder="Select your birth date"
+                  calendarProps={{
+                    captionLayout: "dropdown",
+                    fromYear: 1940,
+                    toYear: new Date().getFullYear() - 18,
+                  }}
                 />
-              </label>
               {dob && !isAdult(dob) && (
                 <p className="text-xs text-destructive mt-1">You must be at least 18 years old.</p>
               )}
             </div>
 
             {/* Country searchable dropdown */}
-            <div className="relative">
+            <div className="relative space-y-2">
               <Label>Country of Residence <span className="text-destructive">*</span></Label>
               <Input
                 value={countrySearch || country}
                 onChange={e => { setCountrySearch(e.target.value); setShowCountryDropdown(true); }}
                 onFocus={() => setShowCountryDropdown(true)}
                 placeholder="Search country..."
-                className="mt-1"
               />
               {showCountryDropdown && (
                 <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
@@ -504,39 +512,50 @@ const KYC = () => {
             </div>
 
             {accountType === "business" && (
-              <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
-                <div>
+              <div className="space-y-4 rounded-lg border border-border bg-card/50 p-4">
+                <div className="space-y-3">
                   <Label>Company Name <span className="text-destructive">*</span></Label>
                   <Input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="ACME Inc." />
                 </div>
-                <div>
+                <div className="space-y-3">
                   <Label>Company Registration Number <span className="text-destructive">*</span></Label>
                   <Input value={companyReg} onChange={e => setCompanyReg(e.target.value)} placeholder="RC123456" />
                 </div>
               </div>
             )}
 
-            <div className="space-y-3 rounded-lg border border-border bg-card/30 p-4">
-              <p className="text-sm font-medium text-muted-foreground">Bank Details (Optional)</p>
-              <div>
+            <div className="space-y-4 rounded-lg border border-border bg-card/30 p-4">
+              <p className="text-sm font-medium text-muted-foreground border-b border-border/50 pb-2 mb-2">Bank Details (Optional)</p>
+              <div className="space-y-3">
                 <Label>Bank Name</Label>
                 <Input value={bankName} onChange={e => setBankName(e.target.value)} placeholder="e.g. Chase Bank" />
               </div>
-              <div>
-                <Label>Account Name</Label>
+              <div className="space-y-3">
+                <Label className="flex items-center justify-between">
+                  <span>Account Name <span className="text-destructive">*</span></span>
+                  {accountType === "individual" && (
+                    <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded flex items-center gap-1 uppercase font-bold tracking-wider">
+                      <Lock className="h-2.5 w-2.5" /> Synced
+                    </span>
+                  )}
+                </Label>
                 <Input 
                   name="vld_acc_holder"
                   id="vld_acc_holder"
                   value={bankAccountName} 
                   onChange={e => {
-                    const val = e.target.value.replace(/[0-9]/g, ''); // Prevent numbers in name
-                    setBankAccountName(val);
+                    if (accountType === "business") {
+                      const val = e.target.value.replace(/[0-9]/g, ''); // Prevent numbers in name
+                      setBankAccountName(val);
+                    }
                   }} 
                   placeholder="Name on account" 
                   autoComplete="off-random-string"
+                  readOnly={accountType === "individual"}
+                  className={accountType === "individual" ? "bg-muted/50 opacity-80 cursor-not-allowed" : ""}
                 />
               </div>
-              <div>
+              <div className="space-y-3">
                 <Label>Account Number</Label>
                 <Input 
                   name="vld_acc_number"
@@ -564,15 +583,15 @@ const KYC = () => {
 
         {/* Step 3 */}
         {step === 3 && (
-          <div className="glass-card p-6 space-y-4">
+          <div className="glass-card p-6 space-y-6">
             <h2 className="text-lg font-semibold text-foreground">Identity Verification</h2>
 
-            <div>
+            <div className="space-y-3">
               <Label>ID Type <span className="text-destructive">*</span></Label>
               <select
                 value={idType}
                 onChange={e => setIdType(e.target.value as IDType)}
-                className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                className="mt-1 w-full rounded-md border border-input bg-background/50 backdrop-blur-sm h-11 px-4 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm text-foreground"
               >
                 <option value="national_id">National ID</option>
                 <option value="passport">Passport</option>
@@ -580,7 +599,7 @@ const KYC = () => {
               </select>
             </div>
 
-            <div>
+            <div className="space-y-3">
               <Label>ID Number <span className="text-destructive">*</span></Label>
               <Input value={idNumber} onChange={e => setIdNumber(e.target.value)} placeholder="Enter ID number" />
             </div>
