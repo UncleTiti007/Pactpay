@@ -7,9 +7,10 @@ interface StatsBarProps {
   totalEarned: number;
   pendingApproval: number;
   onTopUp?: () => void;
+  disabled?: boolean;
 }
 
-const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval, onTopUp }: StatsBarProps) => {
+const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval, onTopUp, disabled }: StatsBarProps) => {
   const stats = [
     {
       label: "Wallet Balance",
@@ -19,11 +20,22 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       action: (
         <div className="flex gap-2">
           {onTopUp && (
-            <Button variant="outline" size="sm" className="h-7 border-primary/30 text-xs text-primary hover:bg-primary/10" onClick={onTopUp}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className={`h-7 border-primary/30 text-xs text-primary hover:bg-primary/10 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
+              onClick={disabled ? undefined : onTopUp}
+              disabled={disabled}
+            >
               Top Up
             </Button>
           )}
-          <Button variant="outline" size="sm" className="h-7 border-primary/30 text-xs text-primary hover:bg-primary/10">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={`h-7 border-primary/30 text-xs text-primary hover:bg-primary/10 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            disabled={disabled}
+          >
             Withdraw
           </Button>
         </div>

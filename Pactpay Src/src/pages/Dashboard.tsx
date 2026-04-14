@@ -8,8 +8,9 @@ import StatsBar from "@/components/dashboard/StatsBar";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import TopUpModal from "@/components/dashboard/TopUpModal";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, ArrowRightLeft, AlertTriangle, X } from "lucide-react";
+import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LockedDashboardOverlay from "@/components/dashboard/LockedDashboardOverlay";
 
 interface Contract {
   id: string;
@@ -148,6 +149,9 @@ const Dashboard = () => {
     c.status === "pending"
   );
 
+  const isNewlyRegistered = !kycVerified && !kycSubmitted;
+  const isPendingApproval = !kycVerified && kycSubmitted;
+
   if (loading)
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -162,44 +166,59 @@ const Dashboard = () => {
       <div className="container mx-auto px-4 py-8">
 
         {/* KYC pending banner */}
-        {!kycVerified && !kycBannerDismissed && (
-          <div className="mb-6 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-amber-400">
+        {!kycVerified && (
+          <div className={`mb-6 flex items-center justify-between rounded-lg border px-4 py-3 ${
+            isPendingApproval 
+              ? "border-amber-500/50 bg-amber-500/20 text-amber-200" 
+              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+          }`}>
+            <div className="flex items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>
-                {kycSubmitted 
-                  ? "Your KYC verification is pending review. Some features might be restricted."
-                  : "Your identity verification is incomplete. Please complete your KYC to unlock all features."}
+              <span className="font-medium">
+                {isPendingApproval 
+                  ? "Verification Pending: Your account is currently in 'View-Only' mode while our team reviews your documents."
+                  : "Identity Incomplete: Please complete your KYC to unlock dashboard features."}
               </span>
-              <button
-                onClick={() => navigate(kycSubmitted ? "/profile" : "/kyc")}
-                className="underline font-medium ml-1"
-              >
-                {kycSubmitted ? "Check Status" : "Complete KYC"}
-              </button>
+              {!isPendingApproval && (
+                <button
+                  onClick={() => navigate("/kyc")}
+                  className="underline font-bold ml-1 hover:text-amber-300 transition-colors"
+                >
+                  Complete KYC
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => setKycBannerDismissed(true)}
-              className="ml-4 text-amber-400 hover:text-amber-300"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            {kycVerified && (
+              <button
+                onClick={() => setKycBannerDismissed(true)}
+                className="ml-4 text-amber-400 hover:text-amber-300"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         )}
 
         {/* Welcome + Quick Actions */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-bold text-foreground">
-            Welcome back, {firstName}
-          </h1>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-foreground">
+              Welcome back, {firstName}
+            </h1>
+            {isPendingApproval && (
+              <p className="text-xs text-amber-500/80 flex items-center gap-1">
+                <Lock className="h-3 w-3" /> Dashboard features are locked during verification
+              </p>
+            )}
+          </div>
           <div className="flex gap-3">
-            <Button variant="hero" asChild>
+            <Button variant="hero" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}>
               <Link to="/contracts/new">
                 <Plus className="mr-2 h-4 w-4" />
                 New Contract
               </Link>
             </Button>
-            <Button variant="outline" className="border-border/50">
+            <Button variant="outline" className="border-border/50" disabled={isPendingApproval}>
               <ArrowRightLeft className="mr-2 h-4 w-4" />
               View All Transactions
             </Button>
@@ -214,104 +233,111 @@ const Dashboard = () => {
             totalEarned={totalEarned}
             pendingApproval={pendingApproval}
             onTopUp={() => setIsTopUpOpen(true)}
+            disabled={isPendingApproval}
           />
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid gap-8 lg:grid-cols-3">
-          {/* Contracts Area */}
-          <div className="lg:col-span-2">
-            <Tabs defaultValue="contracts">
-              <TabsList className="mb-6 bg-card-elevated border border-border/50">
-                <TabsTrigger value="contracts">My Contracts</TabsTrigger>
-                <TabsTrigger value="invitations" className="relative">
-                  Invitations
-                  {myInvitations.length > 0 && (
-                    <span className="ml-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                      {myInvitations.length}
-                    </span>
+        {/* Main Content Grid with Locking */}
+        <div className="relative">
+          {isNewlyRegistered && <LockedDashboardOverlay />}
+          
+          <div className={`grid gap-8 lg:grid-cols-3 ${isNewlyRegistered ? "blur-sm pointer-events-none select-none" : ""}`}>
+            {/* Contracts Area */}
+            <div className="lg:col-span-2">
+              <Tabs defaultValue="contracts">
+                <TabsList className={`mb-6 bg-card-elevated border border-border/50 ${isPendingApproval ? "opacity-50 pointer-events-none" : ""}`}>
+                  <TabsTrigger value="contracts">My Contracts</TabsTrigger>
+                  <TabsTrigger value="invitations" className="relative">
+                    Invitations
+                    {myInvitations.length > 0 && (
+                      <span className="ml-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                        {myInvitations.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="jobs">My Jobs</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="contracts">
+                  {loadingContracts ? (
+                    <p className="text-muted-foreground italic">Fetching your contracts...</p>
+                  ) : myContracts.length === 0 ? (
+                    <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/30 text-center p-6 space-y-4">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Plus className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-foreground">No contracts found</p>
+                        <p className="text-sm text-muted-foreground">Ready to start your next collaboration?</p>
+                      </div>
+                      <Button variant="hero" size="sm" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 pointer-events-none" : ""}>
+                        <Link to="/contracts/new">Create your first contract</Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {myContracts.map((c: any) => (
+                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                      ))}
+                    </div>
                   )}
-                </TabsTrigger>
-                <TabsTrigger value="jobs">My Jobs</TabsTrigger>
-              </TabsList>
+                </TabsContent>
 
-              <TabsContent value="contracts">
-                {loadingContracts ? (
-                  <p className="text-muted-foreground italic">Fetching your contracts...</p>
-                ) : myContracts.length === 0 ? (
-                  <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/30 text-center p-6 space-y-4">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Plus className="h-5 w-5 text-primary" />
+                <TabsContent value="invitations">
+                  {loadingContracts ? (
+                    <p className="text-muted-foreground">Loading...</p>
+                  ) : myInvitations.length === 0 ? (
+                    <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-center px-4">
+                      <FileText className="mb-2 h-8 w-8 opacity-20" />
+                      <p className="mb-1">No pending invitations</p>
+                      <p className="text-xs opacity-60">New invitations from clients will appear here for you to accept or reject.</p>
                     </div>
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">No contracts found</p>
-                      <p className="text-sm text-muted-foreground">Ready to start your next collaboration?</p>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {myInvitations.map((c: any) => (
+                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                      ))}
                     </div>
-                    <Button variant="hero" size="sm" asChild>
-                      <Link to="/contracts/new">Create your first contract</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {myContracts.map((c: any) => (
-                      <ContractCard key={c.id} {...c} />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
+                  )}
+                </TabsContent>
 
-              <TabsContent value="invitations">
-                {loadingContracts ? (
-                  <p className="text-muted-foreground">Loading...</p>
-                ) : myInvitations.length === 0 ? (
-                  <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-center px-4">
-                    <FileText className="mb-2 h-8 w-8 opacity-20" />
-                    <p className="mb-1">No pending invitations</p>
-                    <p className="text-xs opacity-60">New invitations from clients will appear here for you to accept or reject.</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {myInvitations.map((c: any) => (
-                      <ContractCard key={c.id} {...c} />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
+                <TabsContent value="jobs">
+                  {loadingContracts ? (
+                    <p className="text-muted-foreground">Loading...</p>
+                  ) : myJobs.length === 0 ? (
+                    <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
+                      <FileText className="mb-2 h-8 w-8 opacity-20" />
+                      <p>No jobs yet</p>
+                      <p className="text-xs mt-1 opacity-60">Jobs appear here when someone invites you to a contract</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {myJobs.map((c: any) => (
+                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
 
-              <TabsContent value="jobs">
-                {loadingContracts ? (
-                  <p className="text-muted-foreground">Loading...</p>
-                ) : myJobs.length === 0 ? (
-                  <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
-                    <FileText className="mb-2 h-8 w-8 opacity-20" />
-                    <p>No jobs yet</p>
-                    <p className="text-xs mt-1 opacity-60">Jobs appear here when someone invites you to a contract</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {myJobs.map((c: any) => (
-                      <ContractCard key={c.id} {...c} />
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Activity Feed */}
-          <div>
-            <ActivityFeed />
+            {/* Activity Feed */}
+            <div className={isPendingApproval ? "opacity-30 grayscale pointer-events-none" : ""}>
+              <ActivityFeed />
+            </div>
           </div>
         </div>
       </div>
 
       {/* Floating + button */}
-      <Link
-        to="/contracts/new"
-        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform hover:scale-110"
-      >
-        <Plus className="h-6 w-6" />
-      </Link>
+      {!isPendingApproval && !isNewlyRegistered && (
+        <Link
+          to="/contracts/new"
+          className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform hover:scale-110"
+        >
+          <Plus className="h-6 w-6" />
+        </Link>
+      )}
 
       <TopUpModal
         isOpen={isTopUpOpen}

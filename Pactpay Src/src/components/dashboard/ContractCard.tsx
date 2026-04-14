@@ -9,6 +9,7 @@ interface ContractCardProps {
   total_amount: number;
   deadline: string | null;
   otherPartyName: string;
+  disabled?: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -20,9 +21,9 @@ const statusColors: Record<string, string> = {
   cancelled: "bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30",
 };
 
-const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyName }: ContractCardProps) => {
-  return (
-    <Link to={`/contracts/${id}`} className="glass-card block p-5 transition-all hover:border-primary/30">
+const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyName, disabled }: ContractCardProps) => {
+  const CardContent = (
+    <>
       <div className="mb-3 flex items-start justify-between">
         <h3 className="font-semibold text-foreground">{title}</h3>
         <Badge variant="outline" className={statusColors[status] || statusColors.draft}>
@@ -42,6 +43,20 @@ const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyNam
           </span>
         )}
       </div>
+    </>
+  );
+
+  if (disabled) {
+    return (
+      <div className="glass-card block p-5 opacity-70 grayscale-[0.3] cursor-not-allowed">
+        {CardContent}
+      </div>
+    );
+  }
+
+  return (
+    <Link to={`/contracts/${id}`} className="glass-card block p-5 transition-all hover:border-primary/30">
+      {CardContent}
     </Link>
   );
 };
