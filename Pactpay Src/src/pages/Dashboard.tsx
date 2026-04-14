@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardNavbar from "@/components/dashboard/DashboardNavbar";
 import ContractCard from "@/components/dashboard/ContractCard";
-import DemoContractCard from "@/components/dashboard/DemoContractCard";
 import StatsBar from "@/components/dashboard/StatsBar";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
+import TopUpModal from "@/components/dashboard/TopUpModal";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, ArrowRightLeft } from "lucide-react";
+import { Plus, FileText, ArrowRightLeft, AlertTriangle, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Contract {
@@ -19,14 +19,23 @@ interface Contract {
   deadline: string | null;
   client_id: string;
   freelancer_id: string | null;
+  invite_email: string | null;
   otherPartyName?: string;
 }
 
 const Dashboard = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loadingContracts, setLoadingContracts] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [pendingApproval, setPendingApproval] = useState(0);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [kycVerified, setKycVerified] = useState(true);
+  const [kycSubmitted, setKycSubmitted] = useState(false);
+  const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -34,42 +43,110 @@ const Dashboard = () => {
     }
   }, [user, loading]);
 
+  // Refetch every time user navigates to dashboard — fixes stale data after delete
   useEffect(() => {
     if (user) fetchContracts();
-  }, [user]);
+  }, [user, location.key]);
 
   const fetchContracts = async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("contracts")
-      .select("id, title, status, total_amount, deadline, client_id, freelancer_id")
-      .or(`client_id.eq.${user.id},freelancer_id.eq.${user.id}`)
-      .order("created_at", { ascending: false });
+    setLoadingContracts(true);
 
-    if (data) {
-      const enriched = await Promise.all(
-        data.map(async (c: any) => {
-          const otherId = c.client_id === user.id ? c.freelancer_id : c.client_id;
-          let otherName = "Pending";
-          if (otherId) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("full_name")
-              .eq("id", otherId)
-              .single();
-            otherName = profile?.full_name || "Unknown";
-          }
-          return { ...c, otherPartyName: otherName };
-        })
-      );
-      setContracts(enriched);
+    try {
+      const [clientRes, freelancerRes, inviteRes] = await Promise.all([
+        supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("client_id", user.id),
+        supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("freelancer_id", user.id),
+        supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("invite_email", user.email?.toLowerCase()),
+      ]);
+
+      const mergedContracts = [
+        ...(clientRes.data || []),
+        ...(freelancerRes.data || []),
+        ...(inviteRes.data || []),
+      ];
+
+      const uniqueContracts = Array.from(new Map(mergedContracts.map((c) => [c.id, c])).values());
+
+      if (uniqueContracts.length > 0) {
+        const enriched = await Promise.all(
+          uniqueContracts.map(async (c: any) => {
+            try {
+              const otherId = c.client_id === user.id ? c.freelancer_id : c.client_id;
+              let otherName = "Pending";
+              if (otherId) {
+                const { data: profile } = await supabase
+                  .from("profiles")
+                  .select("full_name")
+                  .eq("id", otherId)
+                  .maybeSingle();
+
+                otherName = profile?.full_name || c.invite_email || "Unknown User";
+              } else {
+                otherName = c.invite_email || "Awaiting acceptance";
+              }
+              return { ...c, otherPartyName: otherName };
+            } catch (err) {
+              console.error("Error enriching contract:", err);
+              return { ...c, otherPartyName: c.invite_email || "Unknown" };
+            }
+          })
+        );
+        setContracts(enriched);
+      } else {
+        setContracts([]);
+      }
+
+      // Fetch profile: wallet, KYC status
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("wallet_balance, kyc_verified, id_doc_front_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      if (profile) {
+        setWalletBalance(profile.wallet_balance || 0);
+        setKycVerified(profile.kyc_verified || false);
+        setKycSubmitted(!!profile.id_doc_front_url);
+      }
+
+      // Total earned
+      const { data: txs } = await supabase
+        .from("transactions")
+        .select("amount")
+        .eq("to_user_id", user.id)
+        .eq("type", "release");
+      
+      if (txs) {
+        const sum = txs.reduce((acc, tx) => acc + (tx.amount || 0), 0);
+        setTotalEarned(sum);
+      }
+
+      // Pending approval count
+      const { count } = await supabase
+        .from("milestones")
+        .select("id, contracts!inner(client_id)", { count: "exact" })
+        .eq("status", "in_review")
+        .eq("contracts.client_id", user.id);
+      
+      setPendingApproval(count || 0);
+    } catch (err) {
+      console.error("Critical error in fetchContracts:", err);
+    } finally {
+      setLoadingContracts(false);
     }
-    setLoadingContracts(false);
   };
 
-  const firstName = user?.user_metadata?.full_name?.split(" ")[0] || "there";
+  const firstName =
+    user?.user_metadata?.full_name?.split(" ")[0] ||
+    user?.email?.split("@")[0] ||
+    "Explorer";
+
   const myContracts = contracts.filter((c) => c.client_id === user?.id);
-  const myJobs = contracts.filter((c) => c.freelancer_id === user?.id);
+  const myJobs = contracts.filter((c) => c.freelancer_id === user?.id && c.status !== "pending" && c.status !== "rejected");
+  const myInvitations = contracts.filter((c) => 
+    (c.freelancer_id === user?.id || c.invite_email?.toLowerCase() === user?.email?.toLowerCase()) && 
+    c.status === "pending"
+  );
 
   if (loading)
     return (
@@ -83,6 +160,33 @@ const Dashboard = () => {
       <DashboardNavbar />
 
       <div className="container mx-auto px-4 py-8">
+
+        {/* KYC pending banner */}
+        {!kycVerified && !kycBannerDismissed && (
+          <div className="mb-6 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-amber-400">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>
+                {kycSubmitted 
+                  ? "Your KYC verification is pending review. Some features might be restricted."
+                  : "Your identity verification is incomplete. Please complete your KYC to unlock all features."}
+              </span>
+              <button
+                onClick={() => navigate(kycSubmitted ? "/profile" : "/kyc")}
+                className="underline font-medium ml-1"
+              >
+                {kycSubmitted ? "Check Status" : "Complete KYC"}
+              </button>
+            </div>
+            <button
+              onClick={() => setKycBannerDismissed(true)}
+              className="ml-4 text-amber-400 hover:text-amber-300"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         {/* Welcome + Quick Actions */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold text-foreground">
@@ -105,46 +209,47 @@ const Dashboard = () => {
         {/* Stats Bar */}
         <div className="mb-8">
           <StatsBar
-            walletBalance={0}
-            activeContracts={myContracts.filter((c) => c.status === "active").length}
-            totalEarned={0}
-            pendingApproval={myContracts.filter((c) => c.status === "pending").length}
+            walletBalance={walletBalance}
+            activeContracts={contracts.filter((c) => c.status === "active").length}
+            totalEarned={totalEarned}
+            pendingApproval={pendingApproval}
+            onTopUp={() => setIsTopUpOpen(true)}
           />
         </div>
 
         {/* Main Content Grid */}
         <div className="grid gap-8 lg:grid-cols-3">
-          {/* Contracts Area — 2/3 */}
+          {/* Contracts Area */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="contracts">
               <TabsList className="mb-6 bg-card-elevated border border-border/50">
                 <TabsTrigger value="contracts">My Contracts</TabsTrigger>
+                <TabsTrigger value="invitations" className="relative">
+                  Invitations
+                  {myInvitations.length > 0 && (
+                    <span className="ml-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                      {myInvitations.length}
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="jobs">My Jobs</TabsTrigger>
               </TabsList>
 
               <TabsContent value="contracts">
                 {loadingContracts ? (
-                  <p className="text-muted-foreground">Loading...</p>
+                  <p className="text-muted-foreground italic">Fetching your contracts...</p>
                 ) : myContracts.length === 0 ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <DemoContractCard
-                      title="Brand Identity for TechCorp"
-                      status="active"
-                      amount={1200}
-                      deadline="Apr 15, 2026"
-                      otherParty="Sarah M."
-                      otherPartyRole="Freelancer"
-                      milestones={{ completed: 1, total: 2 }}
-                    />
-                    <DemoContractCard
-                      title="Website Redesign"
-                      status="pending"
-                      amount={3500}
-                      deadline="May 1, 2026"
-                      otherParty="James O."
-                      otherPartyRole="Freelancer"
-                      extraLabel="Awaiting deposit"
-                    />
+                  <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/30 text-center p-6 space-y-4">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Plus className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-semibold text-foreground">No contracts found</p>
+                      <p className="text-sm text-muted-foreground">Ready to start your next collaboration?</p>
+                    </div>
+                    <Button variant="hero" size="sm" asChild>
+                      <Link to="/contracts/new">Create your first contract</Link>
+                    </Button>
                   </div>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -155,28 +260,32 @@ const Dashboard = () => {
                 )}
               </TabsContent>
 
+              <TabsContent value="invitations">
+                {loadingContracts ? (
+                  <p className="text-muted-foreground">Loading...</p>
+                ) : myInvitations.length === 0 ? (
+                  <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-center px-4">
+                    <FileText className="mb-2 h-8 w-8 opacity-20" />
+                    <p className="mb-1">No pending invitations</p>
+                    <p className="text-xs opacity-60">New invitations from clients will appear here for you to accept or reject.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {myInvitations.map((c: any) => (
+                      <ContractCard key={c.id} {...c} />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
               <TabsContent value="jobs">
                 {loadingContracts ? (
                   <p className="text-muted-foreground">Loading...</p>
                 ) : myJobs.length === 0 ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <DemoContractCard
-                      title="Mobile App UI Design"
-                      status="active"
-                      amount={2000}
-                      deadline="Apr 20, 2026"
-                      otherParty="David K."
-                      otherPartyRole="Client"
-                      milestones={{ completed: 0, total: 3 }}
-                    />
-                    <DemoContractCard
-                      title="Social Media Package"
-                      status="completed"
-                      amount={450}
-                      deadline="Completed Mar 10, 2026"
-                      otherParty="Amina B."
-                      otherPartyRole="Client"
-                    />
+                  <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
+                    <FileText className="mb-2 h-8 w-8 opacity-20" />
+                    <p>No jobs yet</p>
+                    <p className="text-xs mt-1 opacity-60">Jobs appear here when someone invites you to a contract</p>
                   </div>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -189,7 +298,7 @@ const Dashboard = () => {
             </Tabs>
           </div>
 
-          {/* Activity Feed — 1/3 */}
+          {/* Activity Feed */}
           <div>
             <ActivityFeed />
           </div>
@@ -203,6 +312,15 @@ const Dashboard = () => {
       >
         <Plus className="h-6 w-6" />
       </Link>
+
+      <TopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setIsTopUpOpen(false)}
+        onSuccess={() => {
+          // Force a full reload to ensure we get the latest wallet balance from Supabase
+          window.location.reload();
+        }}
+      />
     </div>
   );
 };

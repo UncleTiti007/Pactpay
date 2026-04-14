@@ -10,22 +10,93 @@ import { toast } from "sonner";
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const [isSignUp, setIsSignUp] = useState(searchParams.get("mode") === "signup");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(searchParams.get("email") || "");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   useEffect(() => {
+    // If we just got confirmed, force sign out so they must sign in manually as requested
+    if (searchParams.get("confirmed") === "true") {
+      const performSignOut = async () => {
+        await supabase.auth.signOut();
+        toast.success("Email confirmed successfully! Please sign in to continue.");
+        // Clean up the URL
+        const newParams = new URLSearchParams(window.location.search);
+        newParams.delete("confirmed");
+        navigate("/auth?" + newParams.toString(), { replace: true });
+      };
+      performSignOut();
+      return;
+    }
+
     if (user) {
       checkProfile(user.id);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
-  const checkProfile = async (_userId: string) => {
-    navigate("/dashboard");
+  const checkProfile = async (userId: string) => {
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("kyc_verified, full_name, is_admin, email")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const redirectPath = searchParams.get("redirect");
+    console.log("Auth: Checking profile for redirect:", redirectPath);
+
+    // Determine admin status from profile, user metadata or email
+    const isAdmin = profile?.is_admin || user?.user_metadata?.role === 'admin' || user?.email === 'admin@pactpay.com';
+
+    if (isAdmin) {
+      if (!profile) {
+        console.log("Auth: Admin profile missing, creating...");
+        await supabase.from("profiles").insert({
+          id: userId,
+          full_name: user?.user_metadata?.full_name || 'Pactpay Admin',
+          is_admin: true,
+          email: user?.email?.toLowerCase(),
+          account_status: 'active'
+        });
+      }
+      navigate(redirectPath || "/admin");
+    } else {
+      if (!profile) {
+        console.log("Auth: User profile missing, creating...");
+        const { error: insertError } = await supabase.from("profiles").insert({
+          id: userId,
+          full_name: user?.user_metadata?.full_name || '',
+          email: user?.email?.toLowerCase(),
+          account_status: 'active'
+        });
+
+        if (insertError) {
+          console.error("Auth: Failed to create profile:", insertError);
+          toast.error("Could not initialize profile. Please contact support.");
+          // Stay on auth page or try again
+          return;
+        }
+        
+        // New user MUST go to KYC
+        navigate(redirectPath || "/kyc");
+      } else {
+        // Update email if missing
+        if (!profile.email && user?.email) {
+          await supabase.from("profiles").update({ email: user.email.toLowerCase() }).eq("id", userId);
+        }
+        
+        // If full_name is missing, they haven't finished Step 1 of KYC
+        if (!profile.full_name) {
+          console.log("Auth: Profile incomplete, redirecting to KYC");
+          navigate(redirectPath || "/kyc");
+        } else {
+          console.log("Auth: Profile found, redirecting to dashboard");
+          navigate(redirectPath || "/dashboard");
+        }
+      }
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -41,18 +112,41 @@ const Auth = () => {
     setLoading(true);
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
+      const specialCharRegex = /[^A-Za-z0-9]/;
+      if (!specialCharRegex.test(password)) {
+        toast.error("Password must contain at least one special character.");
+        setLoading(false);
+        return;
+      }
+
+      // Check for existing email in profiles
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email.toLowerCase())
+        .maybeSingle();
+
+      if (existingProfile) {
+        toast.error("This email is already registered. Please sign in instead.");
+        setLoading(false);
+        return;
+      }
+
+      const redirectParam = searchParams.get("redirect");
+      const redirectTo = window.location.origin + "/auth?confirmed=true" + (redirectParam ? `&redirect=${encodeURIComponent(redirectParam)}` : "");
+
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName, phone },
-          emailRedirectTo: window.location.origin + "/auth",
+          data: { full_name: fullName },
+          emailRedirectTo: redirectTo,
         },
       });
       if (error) {
         toast.error(error.message);
       } else {
-        toast.success("Check your email to confirm your account!");
+        toast.success("Check your email to confirm your account, then sign in here.");
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -105,24 +199,45 @@ const Auth = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
-              <>
-                <div>
-                  <Label htmlFor="fullName">Full name</Label>
-                  <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" required />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone number (optional)</Label>
-                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 234 567 8900" />
-                </div>
-              </>
+              <div>
+                <Label htmlFor="fullName">Full name</Label>
+                <Input
+                  id="fullName"
+                  name="name"
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="John Doe"
+                  required
+                />
+              </div>
             )}
             <div>
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+              />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} />
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={isSignUp ? "new-password" : "current-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
             </div>
             <Button type="submit" variant="hero" className="w-full" disabled={loading}>
               {loading ? "Loading..." : isSignUp ? "Create Account" : "Sign In"}

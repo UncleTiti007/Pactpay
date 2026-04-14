@@ -6,9 +6,10 @@ interface StatsBarProps {
   activeContracts: number;
   totalEarned: number;
   pendingApproval: number;
+  onTopUp?: () => void;
 }
 
-const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval }: StatsBarProps) => {
+const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval, onTopUp }: StatsBarProps) => {
   const stats = [
     {
       label: "Wallet Balance",
@@ -16,9 +17,16 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       icon: Wallet,
       accent: true,
       action: (
-        <Button variant="outline" size="sm" className="h-7 border-primary/30 text-xs text-primary hover:bg-primary/10">
-          Withdraw
-        </Button>
+        <div className="flex gap-2">
+          {onTopUp && (
+            <Button variant="outline" size="sm" className="h-7 border-primary/30 text-xs text-primary hover:bg-primary/10" onClick={onTopUp}>
+              Top Up
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className="h-7 border-primary/30 text-xs text-primary hover:bg-primary/10">
+            Withdraw
+          </Button>
+        </div>
       ),
     },
     {
