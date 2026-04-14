@@ -1,12 +1,12 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock } from "lucide-react";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria",
@@ -38,18 +38,23 @@ interface FileUpload {
 const KYC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const location = useLocation();
+  const [step, setStep] = useState(location.state?.startStep || 1);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [countrySearch, setCountrySearch] = useState("");
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   // Step 1 - Personal Info
-  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || "");
+  const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
   const [country, setCountry] = useState("");
   const [avatarUpload, setAvatarUpload] = useState<FileUpload>({ file: null, preview: null });
   const avatarRef = useRef<HTMLInputElement>(null);
+
+  // Security Lock
+  const [isNameLocked, setIsNameLocked] = useState(false);
 
   // Step 2 - Account type
   const [accountType, setAccountType] = useState<AccountType>("individual");
@@ -58,7 +63,6 @@ const KYC = () => {
   const [bankName, setBankName] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
-  const [kycVerified, setKycVerified] = useState(false);
 
   // Step 3 - Identity Verification
   const [idType, setIdType] = useState<IDType>("national_id");
@@ -66,9 +70,63 @@ const KYC = () => {
   const [frontUpload, setFrontUpload] = useState<FileUpload>({ file: null, preview: null });
   const [backUpload, setBackUpload] = useState<FileUpload>({ file: null, preview: null });
   const [selfieUpload, setSelfieUpload] = useState<FileUpload>({ file: null, preview: null });
+  
+  // Storage paths (to avoid re-uploading if not changed)
+  const [existingAvatarUrl, setExistingAvatarUrl] = useState<string | null>(null);
+  const [existingFrontUrl, setExistingFrontUrl] = useState<string | null>(null);
+  const [existingBackUrl, setExistingBackUrl] = useState<string | null>(null);
+  const [existingSelfieUrl, setExistingSelfieUrl] = useState<string | null>(null);
+
   const frontRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
   const selfieRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchExistingProfile();
+    }
+  }, [user]);
+
+  const fetchExistingProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user!.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setFullName(data.full_name || user?.user_metadata?.full_name || "");
+        setPhone(data.phone || "");
+        setDob(data.date_of_birth || "");
+        setCountry(data.country || "");
+        setAccountType(data.account_type || "individual");
+        setCompanyName(data.company_name || "");
+        setCompanyReg(data.company_reg_number || "");
+        setBankName(data.bank_name || "");
+        setBankAccountName(data.bank_account_name || "");
+        setBankAccountNumber(data.bank_account_number || "");
+        setIdType(data.id_type || "national_id");
+        setIdNumber(data.id_number || "");
+        
+        setExistingAvatarUrl(data.avatar_url);
+        setExistingFrontUrl(data.id_doc_front_url);
+        setExistingBackUrl(data.id_doc_back_url);
+        setExistingSelfieUrl(data.id_selfie_url);
+
+        // Lock name if verified or documents exist
+        if (data.kyc_verified || data.id_doc_front_url) {
+          setIsNameLocked(true);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching existing kyc data:", err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
 
   const isAdult = (dateStr: string) => {
     if (!dateStr) return false;
@@ -126,7 +184,7 @@ const KYC = () => {
     dob &&
     isAdult(dob) &&
     country &&
-    avatarUpload.file;
+    (avatarUpload.file || existingAvatarUrl);
 
   const canProceedStep2 =
     accountType === "individual" ||
@@ -135,9 +193,9 @@ const KYC = () => {
   const canProceedStep3 =
     idType &&
     idNumber.trim() &&
-    frontUpload.file &&
-    (idType === "passport" || backUpload.file) &&
-    selfieUpload.file;
+    (frontUpload.file || existingFrontUrl) &&
+    (idType === "passport" || (backUpload.file || existingBackUrl)) &&
+    (selfieUpload.file || existingSelfieUrl);
 
   const handleSubmit = async () => {
     if (!user) return;
@@ -168,13 +226,13 @@ const KYC = () => {
       // Upload KYC docs to kyc-documents bucket
       const frontPath = frontUpload.file
         ? await uploadFile(frontUpload.file, `${uid}/id_front.${frontUpload.file.name.split(".").pop()}`)
-        : null;
+        : existingFrontUrl;
       const backPath = backUpload.file
         ? await uploadFile(backUpload.file, `${uid}/id_back.${backUpload.file.name.split(".").pop()}`)
-        : null;
+        : existingBackUrl;
       const selfiePath = selfieUpload.file
         ? await uploadFile(selfieUpload.file, `${uid}/selfie.${selfieUpload.file.name.split(".").pop()}`)
-        : null;
+        : existingSelfieUrl;
 
       if (!frontPath || !selfiePath || (idType !== "passport" && !backPath)) {
         toast.error("Some documents failed to upload. Please try again.");
@@ -197,7 +255,7 @@ const KYC = () => {
         id_doc_front_url: frontPath,
         id_doc_back_url: backPath,
         id_selfie_url: selfiePath,
-        avatar_url: avatarUrl,
+        avatar_url: avatarUrl || existingAvatarUrl,
         kyc_verified: false,
         ...(accountType === "business" && { 
           company_name: companyName, 
@@ -321,8 +379,22 @@ const KYC = () => {
             <h2 className="text-lg font-semibold text-foreground">Personal Information</h2>
 
             <div>
-              <Label>Full Name <span className="text-destructive">*</span></Label>
-              <Input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your legal full name" />
+              <Label className="flex items-center justify-between">
+                <span>Full Name <span className="text-destructive">*</span></span>
+                {isNameLocked && (
+                  <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded flex items-center gap-1 uppercase font-bold tracking-wider">
+                    <Lock className="h-2.5 w-2.5" /> Locked
+                  </span>
+                )}
+              </Label>
+              <Input 
+                value={fullName} 
+                onChange={e => !isNameLocked && setFullName(e.target.value)} 
+                placeholder="Your legal full name" 
+                readOnly={isNameLocked}
+                className={isNameLocked ? "bg-muted/50 opacity-80 cursor-not-allowed border-amber-500/20" : ""}
+              />
+              {isNameLocked && <p className="text-[10px] text-muted-foreground mt-1">Legal name cannot be changed after verification starts.</p>}
             </div>
 
             <div>

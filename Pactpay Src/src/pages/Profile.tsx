@@ -15,15 +15,7 @@ const Profile = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
-
-  // Editable fields
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editCountry, setEditCountry] = useState("");
-  const [saving, setSaving] = useState(false);
-
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,12 +48,8 @@ const Profile = () => {
         account_type: "individual"
       };
       setProfile(newProfile);
-      setEditName(newProfile.full_name);
     } else {
       setProfile(data);
-      setEditName(data.full_name || "");
-      setEditPhone(data.phone || "");
-      setEditCountry(data.country || "");
 
       // Get avatar URL if stored
       if (data.avatar_url) {
@@ -73,28 +61,7 @@ const Profile = () => {
     setLoading(false);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({ 
-        id: user!.id,
-        full_name: editName, 
-        phone: editPhone, 
-        country: editCountry,
-        email: user?.email?.toLowerCase() 
-      });
 
-    if (error) {
-      toast.error("Failed to update profile: " + error.message);
-    } else {
-      toast.success("Profile updated!");
-      setProfile({ ...profile, full_name: editName, phone: editPhone, country: editCountry });
-      setErrorStatus(null);
-      setEditing(false);
-    }
-    setSaving(false);
-  };
 
   if (loading) {
     return (
@@ -184,11 +151,9 @@ const Profile = () => {
               <Badge variant="outline" className="capitalize text-muted-foreground border-border/50">{accountType}</Badge>
             </div>
           </div>
-          {!editing && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit Profile
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={() => navigate("/kyc")}>
+            <Pencil className="h-4 w-4 mr-1" /> Edit Profile
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -196,43 +161,11 @@ const Profile = () => {
           <div className="glass-card p-6 space-y-1 h-full">
             <h2 className="text-base font-semibold text-foreground mb-4">Personal Information</h2>
 
-            {editing ? (
-              <div className="space-y-4">
-                <div>
-                  <Label>Full Name</Label>
-                  <Input value={editName} onChange={e => setEditName(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Phone</Label>
-                  <Input value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Country</Label>
-                  <Input value={editCountry} onChange={e => setEditCountry(e.target.value)} />
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <Button variant="hero" onClick={handleSave} disabled={saving}>
-                    <Check className="h-4 w-4 mr-1" /> {saving ? "Saving..." : "Save Changes"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => { 
-                    setEditing(false); 
-                    setEditName(profile?.full_name || ""); 
-                    setEditPhone(profile?.phone || ""); 
-                    setEditCountry(profile?.country || ""); 
-                  }}>
-                    <X className="h-4 w-4 mr-1" /> Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <InfoRow label="Full Name" value={profile?.full_name} icon={UserIcon} />
-                <InfoRow label="Email" value={user?.email} icon={Mail} />
-                <InfoRow label="Phone" value={profile?.phone} icon={Phone} />
-                <InfoRow label="Country" value={profile?.country} icon={Globe} />
-                <InfoRow label="Date of Birth" value={profile?.date_of_birth} icon={Calendar} />
-              </>
-            )}
+            <InfoRow label="Full Name" value={profile?.full_name} icon={UserIcon} />
+            <InfoRow label="Email" value={user?.email} icon={Mail} />
+            <InfoRow label="Phone" value={profile?.phone} icon={Phone} />
+            <InfoRow label="Country" value={profile?.country} icon={Globe} />
+            <InfoRow label="Date of Birth" value={profile?.date_of_birth} icon={Calendar} />
           </div>
 
           {/* Right Column: Verification & Accounts */}
@@ -242,7 +175,7 @@ const Profile = () => {
               <InfoRow label="ID Type" value={profile?.id_type === "national_id" ? "National ID" : profile?.id_type === "passport" ? "Passport" : "Driver's License"} />
               <InfoRow label="ID Number" value={profile?.id_number} />
               <div className="pt-4">
-                <Button variant="outline" size="sm" onClick={() => navigate("/kyc")} className="w-full">
+                <Button variant="outline" size="sm" onClick={() => navigate("/kyc", { state: { startStep: 3 } })} className="w-full">
                   Update Documents
                 </Button>
               </div>
