@@ -182,7 +182,8 @@ const KYC = () => {
         return;
       }
 
-      const { error: profileError } = await supabase.from("profiles").update({
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: uid,
         full_name: fullName,
         phone,
         date_of_birth: dob,
@@ -202,7 +203,7 @@ const KYC = () => {
           company_name: companyName, 
           company_reg_number: companyReg 
         }),
-      }).eq("id", uid);
+      });
 
       if (profileError) {
         toast.error("Failed to save profile: " + profileError.message);

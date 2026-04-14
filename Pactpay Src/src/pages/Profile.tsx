@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { User, Pencil, Check, X } from "lucide-react";
+import { User as UserIcon, Pencil, Check, X, ShieldCheck, Mail, Phone, Globe, Calendar } from "lucide-react";
 
 const Profile = () => {
   const { user } = useAuth();
@@ -36,24 +36,38 @@ const Profile = () => {
       .from("profiles")
       .select("*")
       .eq("id", user!.id)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
       console.error("Profile fetch error:", error);
       setErrorStatus("Could not load profile. Please complete your KYC.");
       setLoading(false);
       return;
     }
 
-    setProfile(data);
-    setEditName(data.full_name || "");
-    setEditPhone(data.phone || "");
-    setEditCountry(data.country || "");
+    if (!data) {
+      // Initialize a basic profile locally if the DB record is missing
+      const newProfile = {
+        id: user!.id,
+        email: user!.email,
+        full_name: user?.user_metadata?.full_name || "",
+        kyc_verified: false,
+        wallet_balance: 0,
+        account_type: "individual"
+      };
+      setProfile(newProfile);
+      setEditName(newProfile.full_name);
+    } else {
+      setProfile(data);
+      setEditName(data.full_name || "");
+      setEditPhone(data.phone || "");
+      setEditCountry(data.country || "");
 
-    // Get avatar URL if stored
-    if (data.avatar_url) {
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.avatar_url);
-      setAvatarUrl(urlData?.publicUrl || null);
+      // Get avatar URL if stored
+      if (data.avatar_url) {
+        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.avatar_url);
+        setAvatarUrl(urlData?.publicUrl || null);
+      }
     }
 
     setLoading(false);
@@ -63,14 +77,20 @@ const Profile = () => {
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
-      .update({ full_name: editName, phone: editPhone, country: editCountry })
-      .eq("id", user!.id);
+      .upsert({ 
+        id: user!.id,
+        full_name: editName, 
+        phone: editPhone, 
+        country: editCountry,
+        email: user?.email?.toLowerCase() 
+      });
 
     if (error) {
       toast.error("Failed to update profile: " + error.message);
     } else {
       toast.success("Profile updated!");
       setProfile({ ...profile, full_name: editName, phone: editPhone, country: editCountry });
+      setErrorStatus(null);
       setEditing(false);
     }
     setSaving(false);
@@ -92,15 +112,23 @@ const Profile = () => {
 
   if (errorStatus && !profile) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background text-foreground">
         <DashboardNavbar />
-        <div className="container mx-auto max-w-lg px-4 py-20 text-center space-y-6">
-          <div className="glass-card p-10 space-y-4">
-            <h1 className="text-2xl font-bold">Profile Not Setup</h1>
-            <p className="text-muted-foreground">{errorStatus}</p>
-            <Button variant="hero" onClick={() => navigate("/kyc")} className="w-full">
-              Complete KYC Now
-            </Button>
+        <div className="container mx-auto max-w-lg px-4 py-20">
+          <div className="glass-card overflow-hidden">
+            <div className="h-2 bg-primary/20" />
+            <div className="p-10 text-center space-y-6">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+                <UserIcon className="h-8 w-8 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-2xl font-bold tracking-tight">Profile Not Setup</h1>
+                <p className="text-muted-foreground leading-relaxed">{errorStatus}</p>
+              </div>
+              <Button variant="hero" onClick={() => navigate("/kyc")} className="w-full h-12 text-base shadow-lg shadow-primary/20">
+                Complete KYC Now
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -110,10 +138,13 @@ const Profile = () => {
   const kycVerified = profile?.kyc_verified === true;
   const accountType = profile?.account_type || "individual";
 
-  const InfoRow = ({ label, value }: { label: string; value?: string | null }) => (
-    <div className="flex justify-between py-2 border-b border-border/50 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm text-foreground font-medium">{value || "—"}</span>
+  const InfoRow = ({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: any }) => (
+    <div className="group flex items-center justify-between py-3 border-b border-border/40 last:border-0 transition-colors hover:bg-white/5 px-2 -mx-2 rounded-lg">
+      <div className="flex items-center gap-3">
+        {Icon && <Icon className="h-4 w-4 text-muted-foreground/60 group-hover:text-primary/70 transition-colors" />}
+        <span className="text-sm text-muted-foreground font-medium">{label}</span>
+      </div>
+      <span className="text-sm text-foreground font-semibold">{value || "—"}</span>
     </div>
   );
 
@@ -137,14 +168,20 @@ const Profile = () => {
             <h1 className="text-xl font-bold text-foreground truncate">{profile?.full_name || "Anonymous"}</h1>
             <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-              {profile?.kyc_verified ? (
-                <Badge className="bg-green-600/20 text-green-500 border-green-600/30">✓ Verified</Badge>
+              {kycVerified ? (
+                <Badge className="bg-green-500/10 text-green-500 border-green-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3" /> Verified
+                </Badge>
               ) : profile?.id_doc_front_url ? (
-                <Badge className="bg-amber-600/20 text-amber-500 border-amber-600/30">⏳ Pending Review</Badge>
+                <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Calendar className="h-3 w-3" /> Pending Review
+                </Badge>
               ) : (
-                <Badge className="bg-blue-600/20 text-blue-500 border-blue-600/30">ℹ️ KYC Required</Badge>
+                <Badge className="bg-primary/10 text-primary border-primary/30 px-2.5 py-0.5 rounded-full">
+                  Action Required
+                </Badge>
               )}
-              <Badge variant="outline" className="capitalize">{accountType}</Badge>
+              <Badge variant="outline" className="capitalize text-muted-foreground border-border/50">{accountType}</Badge>
             </div>
           </div>
           {!editing && (
@@ -189,11 +226,11 @@ const Profile = () => {
               </div>
             ) : (
               <>
-                <InfoRow label="Full Name" value={profile?.full_name} />
-                <InfoRow label="Email" value={user?.email} />
-                <InfoRow label="Phone" value={profile?.phone} />
-                <InfoRow label="Country" value={profile?.country} />
-                <InfoRow label="Date of Birth" value={profile?.date_of_birth} />
+                <InfoRow label="Full Name" value={profile?.full_name} icon={UserIcon} />
+                <InfoRow label="Email" value={user?.email} icon={Mail} />
+                <InfoRow label="Phone" value={profile?.phone} icon={Phone} />
+                <InfoRow label="Country" value={profile?.country} icon={Globe} />
+                <InfoRow label="Date of Birth" value={profile?.date_of_birth} icon={Calendar} />
               </>
             )}
           </div>
