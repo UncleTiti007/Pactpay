@@ -57,7 +57,7 @@ const Dashboard = () => {
       const [clientRes, freelancerRes, inviteRes] = await Promise.all([
         supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("client_id", user.id),
         supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("freelancer_id", user.id),
-        supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").eq("invite_email", user.email?.toLowerCase()),
+        supabase.from("contracts").select("id, title, status, total_amount, deadline, client_id, freelancer_id, invite_email").ilike("invite_email", user.email || ""),
       ]);
 
       const mergedContracts = [

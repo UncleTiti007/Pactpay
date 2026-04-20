@@ -147,7 +147,7 @@ const CreateContract = () => {
           type: "invite",
           title: "New Contract Invite",
           message: `You have been invited to a new contract: ${title}`,
-          link: invite ? `/invite/${invite.token}` : "/dashboard"
+          link: `/contracts/${contract.id}`
         });
       }
 

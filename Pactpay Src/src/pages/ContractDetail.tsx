@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft } from "lucide-react";
+import { UserSearch } from "@/components/contract/UserSearch";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -56,6 +57,9 @@ const ContractDetail = () => {
 
   const [deletingContract, setDeletingContract] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [selectedFreelancer, setSelectedFreelancer] = useState<{ id: string; full_name: string; email: string } | null>(null);
+  
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -141,6 +145,7 @@ const ContractDetail = () => {
 
   const isClient = user?.id === contract?.client_id;
   const isFreelancer = user?.id === contract?.freelancer_id;
+  const isInvited = user?.email?.toLowerCase() === (activeInvite?.invited_email || contract?.invite_email)?.toLowerCase();
   const isFunded = !!contract?.funded_at;
   const totalRequired = contract?.total_amount || 0;
 
@@ -272,6 +277,89 @@ const ContractDetail = () => {
     fetchContract();
   };
 
+  const handleAcceptInvite = async () => {
+    if (!user || !contract) return;
+    
+    if (!kycVerified) {
+      toast.error("You must complete KYC verification before accepting contracts.");
+      return;
+    }
+
+    setAccepting(true);
+    try {
+      // 1. Update contract status and assign freelancer
+      const { error: cError } = await supabase
+        .from("contracts")
+        .update({ freelancer_id: user.id, status: "pending" })
+        .eq("id", contract.id);
+
+      if (cError) throw cError;
+
+      // 2. Mark the invite as accepted if we have one
+      if (activeInvite) {
+        await supabase
+          .from("contract_invites")
+          .update({ accepted: true })
+          .eq("id", activeInvite.id);
+      } else {
+        // Find and mark by email if activeInvite wasn't found in handleInitialLoad
+        await supabase
+          .from("contract_invites")
+          .update({ accepted: true })
+          .eq("contract_id", contract.id)
+          .eq("invited_email", user.email?.toLowerCase())
+          .eq("accepted", false);
+      }
+
+      // 3. Notify the client
+      await supabase.from("notifications").insert({
+        user_id: contract.client_id,
+        type: "update",
+        title: "Contract Accepted!",
+        message: `${user?.user_metadata?.full_name || user.email} has accepted your contract: "${contract.title}". You can now fund the contract to start work.`,
+        link: `/contracts/${contract.id}`
+      });
+
+      toast.success("Contract accepted! The client can now fund the contract to activate it.");
+      fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to accept contract: " + err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleDeclineInvite = async () => {
+    if (!user || !contract) return;
+    
+    setAccepting(true);
+    try {
+      // 1. Update contract status
+      const { error: cError } = await supabase
+        .from("contracts")
+        .update({ status: "cancelled", freelancer_id: null })
+        .eq("id", contract.id);
+
+      if (cError) throw cError;
+
+      // 2. Notify the client
+      await supabase.from("notifications").insert({
+        user_id: contract.client_id,
+        type: "update",
+        title: "Contract Invite Declined",
+        message: `${user?.user_metadata?.full_name || user.email} has declined your invitation for "${contract.title}".`,
+        link: `/contracts/${contract.id}`
+      });
+
+      toast.info("Contract invitation declined.");
+      navigate("/dashboard");
+    } catch (err: any) {
+      toast.error("Failed to decline contract: " + err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const handleSubmitDispute = async () => {
     if (!disputingMilestone || !disputeReason.trim()) {
       toast.error("Please provide a reason for the dispute");
@@ -312,29 +400,82 @@ const ContractDetail = () => {
 
   const handleSaveEmail = async () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newInviteEmail)) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
     setSavingEmail(true);
     
-    const { data: invite, error } = await supabase
-      .from("contract_invites")
-      .insert({ contract_id: id, invited_email: newInviteEmail })
-      .select().single();
-      
-    if (error) {
-      toast.error("Failed to update email: " + error.message);
-    } else {
-      const { data: { session } } = await supabase.auth.getSession();
-      await supabase.functions.invoke("send-email", {
-        body: { type: "invite", contract_id: id, invite_id: invite.id }
-      });
-      toast.success("Invite email updated and resent successfully!");
+    try {
+      // If a registered freelancer was selected via search
+      if (selectedFreelancer) {
+        // 1. Update the contract directly
+        const { error: cError } = await supabase
+          .from("contracts")
+          .update({ 
+            freelancer_id: selectedFreelancer.id, 
+            invite_email: selectedFreelancer.email.toLowerCase() 
+          })
+          .eq("id", id);
+          
+        if (cError) throw cError;
+
+        // 2. Insert into invites table (for tracking/fallback)
+        const { data: invite } = await supabase
+          .from("contract_invites")
+          .insert({ 
+            contract_id: id, 
+            invited_email: selectedFreelancer.email.toLowerCase() 
+          })
+          .select().single();
+
+        // 3. Notify the freelancer internally
+        await supabase.from("notifications").insert({
+          user_id: selectedFreelancer.id,
+          type: "invite",
+          title: "New Contract Invite",
+          message: `You have been invited to a new contract: ${contract.title}`,
+          link: invite ? `/invite/${invite.token}` : `/contracts/${id}`
+        });
+
+        // 4. Trigger email as backup
+        await supabase.functions.invoke("send-email", {
+          body: { type: "invite", contract_id: id, invite_id: invite?.id }
+        });
+
+        toast.success(`Contract assigned to ${selectedFreelancer.full_name} and notification sent!`);
+      } else {
+        // Fallback: Traditional email invite for new users
+        if (!newInviteEmail) {
+           toast.error("Please search for a user or enter an email address");
+           setSavingEmail(false);
+           return;
+        }
+
+        const { data: invite, error } = await supabase
+          .from("contract_invites")
+          .insert({ contract_id: id, invited_email: newInviteEmail.toLowerCase() })
+          .select().single();
+          
+        if (error) throw error;
+
+        await supabase.functions.invoke("send-email", {
+          body: { type: "invite", contract_id: id, invite_id: invite.id }
+        });
+        
+        // Also update the contract's invite_email field for consistency
+        await supabase.from("contracts").update({ 
+          invite_email: newInviteEmail.toLowerCase(),
+          freelancer_id: null 
+        }).eq("id", id);
+
+        toast.success("Invite email sent successfully!");
+      }
+
       setEditingEmail(false);
+      setSelectedFreelancer(null);
       fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to update freelancer: " + err.message);
+    } finally {
+      setSavingEmail(false);
     }
-    setSavingEmail(false);
   };
 
   const handleCopyInviteLink = () => {
@@ -395,8 +536,39 @@ const ContractDetail = () => {
         {!kycVerified && (
           <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400 flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 shrink-0" />
-            Your KYC verification is pending. Funding contracts is restricted until your identity is verified.
+            Your KYC verification is pending. Funding or accepting contracts is restricted until your identity is verified.
             <a href="/profile" className="underline ml-1">Check status</a>
+          </div>
+        )}
+
+        {/* Invitation Banner */}
+        {contract.status === "pending" && isInvited && activeInvite && (
+          <div className="mb-8 rounded-xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-primary font-bold">
+                  <CheckCircle className="h-5 w-5" />
+                  <h2 className="text-xl">Contract Invitation</h2>
+                </div>
+                <p className="text-muted-foreground">
+                  {clientName} has invited you to work on <span className="font-medium text-foreground">"{contract.title}"</span>. 
+                  Review the details below and accept to proceed.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="hero" size="lg" onClick={handleAcceptInvite} disabled={accepting || !kycVerified}>
+                  {accepting ? "Accepting..." : "Accept & Start Workspace"}
+                </Button>
+                <Button variant="ghost" size="lg" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
+                  Decline
+                </Button>
+              </div>
+            </div>
+            {!kycVerified && (
+              <p className="mt-3 text-xs text-amber-400">
+                You must complete identity verification in your profile before you can accept this contract.
+              </p>
+            )}
           </div>
         )}
 
@@ -408,14 +580,16 @@ const ContractDetail = () => {
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
           </Button>
-          <div className="mb-2 flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-foreground">{contract.title}</h1>
-            <Badge variant="outline" className={statusColors[contract.status] || statusColors.draft}>
-              {contract.status}
-            </Badge>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-foreground">{contract.title}</h1>
+              <Badge variant="outline" className={statusColors[contract.status] || statusColors.draft}>
+                {contract.status}
+              </Badge>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Client: {clientName} · Freelancer:{" "}
+            Client: {clientName} · Assigned User:{" "}
             {contract.freelancer_id ? (
               freelancerName
             ) : (
@@ -424,51 +598,59 @@ const ContractDetail = () => {
           </p>
 
           {isClient && contract.status === "pending" && !contract.freelancer_id && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Invite sent to:</span>
+            <div className="mt-3 space-y-3 max-w-md">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">User Assignment</span>
               {editingEmail ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="email"
-                    value={newInviteEmail}
-                    onChange={(e) => setNewInviteEmail(e.target.value)}
-                    className="h-7 text-xs w-56"
-                    placeholder="freelancer@email.com"
+                <div className="space-y-3">
+                  <UserSearch 
+                    onSelect={(user) => {
+                      setSelectedFreelancer(user);
+                      if (user) setNewInviteEmail(user.email);
+                    }}
+                    onEmailChange={(email) => {
+                      setNewInviteEmail(email);
+                      setSelectedFreelancer(null);
+                    }}
+                    defaultValue={newInviteEmail}
                   />
-                  <Button size="sm" variant="hero" className="h-7 px-3 text-xs" onClick={handleSaveEmail} disabled={savingEmail}>
-                    {savingEmail ? "Sending..." : "Save & Resend"}
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setEditingEmail(false); setNewInviteEmail(contract.invite_email || ""); }}>
-                    Cancel
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="hero" className="flex-1" onClick={handleSaveEmail} disabled={savingEmail}>
+                      {savingEmail ? "Assigning..." : "Assign & Notify"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingEmail(false); setNewInviteEmail(contract.invite_email || ""); setSelectedFreelancer(null); }}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-foreground">{activeInvite?.invited_email || contract.invite_email}</span>
-                  <button onClick={() => setEditingEmail(true)} className="text-muted-foreground hover:text-foreground">
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      const toastId = toast.loading("Resending invite...");
-                      try {
-                        const { error } = await supabase.functions.invoke("send-email", {
-                          body: { type: "invite", contract_id: id, invite_id: activeInvite?.id }
-                        });
-                        if (error) throw error;
-                        toast.success("Invite email resent successfully!", { id: toastId });
-                      } catch (err: any) {
-                        toast.error("Failed to resend: " + (err.message || "Unknown error"), { id: toastId });
-                      }
-                    }} 
-                    className="flex items-center gap-1 text-xs text-primary hover:underline ml-2"
-                  >
-                    Resend invite
-                  </button>
-                  <button onClick={handleCopyInviteLink} className="flex items-center gap-1 text-xs text-primary hover:underline ml-2">
-                    {copiedLink ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    {copiedLink ? "Copied!" : "Copy invite link"}
-                  </button>
+                <div className="flex items-center gap-2 bg-card/50 border border-border rounded-lg px-3 py-2">
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-xs text-muted-foreground">Invite sent to:</p>
+                    <p className="text-sm font-medium truncate text-foreground">{activeInvite?.invited_email || contract.invite_email}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setEditingEmail(true)} className="p-2 text-muted-foreground hover:text-foreground transition-colors" title="Change Freelancer">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        const toastId = toast.loading("Resending invite...");
+                        try {
+                          const { error } = await supabase.functions.invoke("send-email", {
+                            body: { type: "invite", contract_id: id, invite_id: activeInvite?.id }
+                          });
+                          if (error) throw error;
+                          toast.success("Invite email resent successfully!", { id: toastId });
+                        } catch (err: any) {
+                          toast.error("Failed to resend: " + (err.message || "Unknown error"), { id: toastId });
+                        }
+                      }} 
+                      className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
+                      title="Resend Invitation"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -737,6 +919,39 @@ const ContractDetail = () => {
             </Button>
             <Button variant="destructive" onClick={handleDeleteContract} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete Permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispute Modal */}
+      <Dialog open={!!disputingMilestone} onOpenChange={(open) => !open && setDisputingMilestone(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Raise a Dispute</DialogTitle>
+            <DialogDescription>
+              Provide the reason for the dispute. The escrowed funds will be frozen until the admin intervenes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground uppercase">Milestone</span>
+              <p className="font-medium">{disputingMilestone?.title || disputingMilestone?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground uppercase">Reason</span>
+              <Textarea
+                placeholder="Explain the issue clearly..."
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                className="min-h-[120px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDisputingMilestone(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleSubmitDispute} disabled={submittingDispute}>
+              {submittingDispute ? "Submitting..." : "Freeze Funds & Raise Dispute"}
             </Button>
           </DialogFooter>
         </DialogContent>

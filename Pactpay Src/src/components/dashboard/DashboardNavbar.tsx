@@ -37,6 +37,7 @@ const DashboardNavbar = () => {
             filter: `user_id=eq.${user.id}`
           },
           (payload) => {
+            console.log("Real-time notification received:", payload.new);
             setNotifications(prev => [payload.new, ...prev].slice(0, 5));
             setUnreadCount(prev => prev + 1);
             toast.info(payload.new.title, {
