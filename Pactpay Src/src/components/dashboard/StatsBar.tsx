@@ -52,7 +52,7 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       icon: TrendingUp,
     },
     {
-      label: "Action Items",
+      label: "Pending Approval",
       value: pendingApproval.toString(),
       icon: Clock,
     },
