@@ -565,13 +565,13 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {["all", "deposit", "escrow", "release", "refund", "fee"].map((s) => (
+                {["all", "deposit", "escrowed", "released", "refund", "fee"].map((s) => (
                   <Button 
                     key={s}
                     size="sm" 
-                    variant={txFilter === s ? "hero" : "outline"}
+                    variant={txFilter === (s === "escrowed" ? "escrow" : s === "released" ? "release" : s) ? "hero" : "outline"}
                     className="capitalize"
-                    onClick={() => setTxFilter(s)}
+                    onClick={() => setTxFilter(s === "escrowed" ? "escrow" : s === "released" ? "release" : s)}
                   >
                     {s}
                   </Button>
@@ -597,7 +597,7 @@ export default function AdminDashboard() {
                     )
                     .map(t => (
                     <TableRow key={t.id}>
-                      <TableCell><Badge variant="outline" className="uppercase">{t.type}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="uppercase">{t.type === 'escrow' ? 'escrowed' : t.type === 'release' ? 'released' : t.type}</Badge></TableCell>
                       <TableCell className={`font-semibold ${(t.type === 'deposit' || t.type === 'wallet_topup') ? 'text-blue-500' : t.type === 'fee' ? 'text-destructive' : 'text-primary'}`}>
                         ${t.amount?.toLocaleString()}
                       </TableCell>
