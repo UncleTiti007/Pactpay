@@ -17,6 +17,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (user) fetchProfile();
@@ -59,6 +60,41 @@ const Profile = () => {
     }
 
     setLoading(false);
+  };
+
+  const handleAvatarUpload = async (event: any) => {
+    try {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      setUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user!.id}/${Math.random()}.${fileExt}`;
+
+      // 1. Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Update profile record
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: filePath })
+        .eq('id', user!.id);
+
+      if (updateError) throw updateError;
+
+      // 3. Update local state
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      setAvatarUrl(urlData?.publicUrl || null);
+      toast.success("Profile picture updated successfully!");
+    } catch (error: any) {
+      toast.error(error.message || "Error uploading avatar");
+    } finally {
+      setUploading(false);
+    }
   };
 
 
@@ -120,16 +156,35 @@ const Profile = () => {
       <DashboardNavbar />
       <div className="container mx-auto max-w-5xl px-4 py-8 space-y-6">
 
-        {/* Header card - Full Width */}
         <div className="glass-card p-6 flex items-center gap-5">
-          <div className="relative">
+          <div 
+            className="relative group cursor-pointer"
+            onClick={() => document.getElementById('avatar-upload')?.click()}
+          >
             {avatarUrl ? (
-              <img src={avatarUrl} alt="avatar" className="h-20 w-20 rounded-full object-cover ring-2 ring-border" />
+              <img src={avatarUrl} alt="avatar" className="h-20 w-20 rounded-full object-cover ring-2 ring-border transition-opacity group-hover:opacity-75" />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ring-2 ring-border">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 ring-2 ring-border transition-colors group-hover:bg-primary/20">
                 <UserIcon className="h-9 w-9 text-primary" />
               </div>
             )}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="bg-black/40 rounded-full p-2 backdrop-blur-sm">
+                {uploading ? (
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <Pencil className="h-5 w-5 text-white" />
+                )}
+              </div>
+            </div>
+            <input 
+              id="avatar-upload"
+              type="file" 
+              className="hidden" 
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              disabled={uploading}
+            />
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-foreground truncate">{profile?.full_name || "Anonymous"}</h1>
