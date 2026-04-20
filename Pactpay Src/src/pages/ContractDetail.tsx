@@ -144,7 +144,9 @@ const ContractDetail = () => {
   const isClient = user?.id === contract?.client_id;
   const isFreelancer = user?.id === contract?.freelancer_id;
   const isInvited = user?.email?.toLowerCase() === (activeInvite?.invited_email || contract?.invite_email)?.toLowerCase();
-  const isFunded = !!contract?.funded_at;
+  
+  // A contract is funded when it is active or completed
+  const isFunded = contract?.status === 'active' || contract?.status === 'completed' || contract?.status === 'disputed';
   const totalRequired = contract?.total_amount || 0;
 
   const handleFundContract = async () => {
@@ -179,7 +181,7 @@ const ContractDetail = () => {
       if (cErr) throw new Error("Failed to activate contract");
 
       await supabase.from("transactions").insert([
-        { type: "deposit", amount: netAmount, from_user_id: user.id, metadata: { contract_id: id } },
+        { type: "escrow", amount: netAmount, from_user_id: user.id, metadata: { contract_id: id } },
         { type: "fee", amount: platformFee, from_user_id: user.id, metadata: { contract_id: id, note: "2% platform fee" } }
       ]);
 
@@ -526,9 +528,13 @@ const ContractDetail = () => {
   if (!contract) return null;
 
   const releasedAmount = milestones
-    .filter((m) => m.status === "released")
+    .filter((m) => m.status === "completed" || m.status === "released")
     .reduce((s: number, m: any) => s + (m.amount || 0), 0);
-  const escrowAmount = contract.total_amount - releasedAmount;
+  
+  // Escrow = net amount (after platform fee) minus what has already been released
+  const platformFee = contract.platform_fee || (contract.total_amount * 0.02);
+  const netEscrow = contract.total_amount - platformFee;
+  const escrowAmount = isFunded ? (netEscrow - releasedAmount) : 0;
 
   return (
     <div className="min-h-screen bg-background">
