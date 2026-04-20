@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
 
 const statusColors: Record<string, string> = {
@@ -65,6 +65,13 @@ const ContractDetail = () => {
   const [submissionLink, setSubmissionLink] = useState("");
   const [submissionFile, setSubmissionFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Milestone History & Revision Note State
+  const [milestoneHistory, setMilestoneHistory] = useState<Record<string, any[]>>({});
+  const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({});
+  const [requestingRevision, setRequestingRevision] = useState<any>(null);
+  const [revisionFeedback, setRevisionFeedback] = useState("");
+  const [submittingHistory, setSubmittingHistory] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -146,6 +153,22 @@ const ContractDetail = () => {
     setKycVerified(profile?.kyc_verified ?? false);
 
     setLoading(false);
+
+    // Also fetch milestone history
+    const { data: history } = await supabase
+      .from("milestone_submissions")
+      .select("*")
+      .in("milestone_id", milestoneList.map((m: any) => m.id))
+      .order("created_at", { ascending: false });
+
+    if (history) {
+      const groupedHistory: Record<string, any[]> = {};
+      history.forEach((entry: any) => {
+        if (!groupedHistory[entry.milestone_id]) groupedHistory[entry.milestone_id] = [];
+        groupedHistory[entry.milestone_id].push(entry);
+      });
+      setMilestoneHistory(groupedHistory);
+    }
   };
 
   const isClient = user?.id === contract?.client_id;
@@ -305,6 +328,15 @@ const ContractDetail = () => {
 
       if (error) throw error;
 
+      // Also record in history table
+      await supabase.from("milestone_submissions").insert({
+        milestone_id: milestoneId,
+        created_by: user.id,
+        type: "submission",
+        note: submissionNote,
+        attachment_url: finalUrl
+      });
+
       toast.success("Milestone submitted for review!");
       setSubmittingMilestoneId(null);
       setSubmissionNote("");
@@ -315,6 +347,50 @@ const ContractDetail = () => {
       toast.error("Failed to submit milestone: " + error.message);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const executeRequestRevision = async () => {
+    if (!requestingRevision || !revisionFeedback.trim()) {
+      toast.error("Please provide feedback for the revision");
+      return;
+    }
+
+    setSubmittingHistory(true);
+    try {
+      // 1. Update milestone status
+      const { error: mError } = await supabase
+        .from("milestones")
+        .update({ status: "revision" })
+        .eq("id", requestingRevision.id);
+
+      if (mError) throw mError;
+
+      // 2. Record revision request in history
+      await supabase.from("milestone_submissions").insert({
+        milestone_id: requestingRevision.id,
+        created_by: user.id,
+        type: "revision_request",
+        note: revisionFeedback
+      });
+
+      // 3. Notify the freelancer
+      await supabase.from("notifications").insert({
+        user_id: contract.freelancer_id,
+        type: "update",
+        title: "Revision Requested",
+        message: `The client has requested a revision for: "${requestingRevision.title || requestingRevision.name}". Feedback: ${revisionFeedback.substring(0, 50)}...`,
+        link: `/contracts/${contract.id}`
+      });
+
+      toast.success("Revision request sent with feedback!");
+      setRequestingRevision(null);
+      setRevisionFeedback("");
+      fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to request revision: " + err.message);
+    } finally {
+      setSubmittingHistory(false);
     }
   };
 
@@ -901,11 +977,7 @@ const ContractDetail = () => {
                               <Button size="sm" variant="hero" onClick={() => setReleasingMilestone(m)}>
                                 Approve & Release
                               </Button>
-                              <Button size="sm" variant="outline" onClick={async () => {
-                                await supabase.from("milestones").update({ status: "revision" }).eq("id", m.id);
-                                toast.success("Revision requested");
-                                fetchContract();
-                              }}>
+                              <Button size="sm" variant="outline" onClick={() => setRequestingRevision(m)}>
                                 Request Revision
                               </Button>
                             </>
@@ -931,6 +1003,56 @@ const ContractDetail = () => {
                             </span>
                           )}
                         </div>
+
+                        {/* Milestone History Toggle */}
+                        {milestoneHistory[m.id] && milestoneHistory[m.id].length > 0 && (
+                          <div className="mt-4 border-t border-border/30 pt-3">
+                            <button 
+                              onClick={() => setExpandedHistory(prev => ({ ...prev, [m.id]: !prev[m.id] }))}
+                              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors mb-2"
+                            >
+                              <Clock className="h-3 w-3" />
+                              View History ({milestoneHistory[m.id].length})
+                              {expandedHistory[m.id] ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </button>
+                            
+                            {expandedHistory[m.id] && (
+                              <div className="space-y-3 pl-2 border-l-2 border-border/50 ml-1 py-1 animate-in fade-in slide-in-from-left-1">
+                                {milestoneHistory[m.id].map((event: any) => (
+                                  <div key={event.id} className="relative">
+                                    <div className="text-[10px] text-muted-foreground flex justify-between">
+                                      <span className="flex items-center gap-1 font-medium">
+                                        {event.type === 'submission' ? (
+                                          <Upload className="h-2.5 w-2.5 text-blue-400" />
+                                        ) : (
+                                          <MessageSquare className="h-2.5 w-2.5 text-amber-400" />
+                                        )}
+                                        {event.type === 'submission' ? 'Freelancer Submitted' : 'Client Requested Revision'}
+                                      </span>
+                                      <span>{new Date(event.created_at).toLocaleDateString()}</span>
+                                    </div>
+                                    {event.note && (
+                                      <p className="text-xs text-foreground mt-1 bg-background/30 p-2 rounded italic">"{event.note}"</p>
+                                    )}
+                                    {event.attachment_url && (
+                                      <div className="mt-1.5">
+                                        <a 
+                                          href={event.attachment_url} 
+                                          target="_blank" 
+                                          rel="noreferrer" 
+                                          className="text-[10px] flex items-center gap-1 text-blue-400 hover:underline"
+                                        >
+                                          {event.attachment_url.includes('supabase.co') ? <Download className="h-2.5 w-2.5" /> : <Link className="h-2.5 w-2.5" />}
+                                          {event.attachment_url.includes('supabase.co') ? 'Download Attachment' : 'View External Link'}
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1134,6 +1256,33 @@ const ContractDetail = () => {
             <Button variant="ghost" onClick={() => setDisputingMilestone(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleSubmitDispute} disabled={submittingDispute}>
               {submittingDispute ? "Submitting..." : "Freeze Funds & Raise Dispute"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!requestingRevision} onOpenChange={(open) => !open && setRequestingRevision(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request a Revision</DialogTitle>
+            <DialogDescription>
+              Provide clear feedback to the freelancer on what needs to be changed for "{requestingRevision?.title || requestingRevision?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="my-4 space-y-4">
+            <Textarea
+              placeholder="Example: The logo should be slightly larger and the blue color should be darker..."
+              value={revisionFeedback}
+              onChange={(e) => setRevisionFeedback(e.target.value)}
+              rows={5}
+              className="bg-background/50"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRequestingRevision(null)} disabled={submittingHistory}>
+              Cancel
+            </Button>
+            <Button variant="hero" onClick={executeRequestRevision} disabled={submittingHistory || !revisionFeedback.trim()}>
+              {submittingHistory ? "Sending..." : "Send Revision Feedback"}
             </Button>
           </DialogFooter>
         </DialogContent>
