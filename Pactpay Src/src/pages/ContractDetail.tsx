@@ -58,8 +58,6 @@ const ContractDetail = () => {
   const [deletingContract, setDeletingContract] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
-  const [selectedFreelancer, setSelectedFreelancer] = useState<{ id: string; full_name: string; email: string } | null>(null);
-  
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -173,7 +171,11 @@ const ContractDetail = () => {
       const { error: updateErr } = await supabase.from("profiles").update({ wallet_balance: newBalance }).eq("id", user.id);
       if (updateErr) throw new Error("Failed to deduct wallet balance");
 
-      const { error: cErr } = await supabase.from("contracts").update({ status: "active", platform_fee: platformFee }).eq("id", id);
+      const { error: cErr } = await supabase.from("contracts").update({ 
+        status: "active", 
+        platform_fee: platformFee,
+        funded_at: new Date().toISOString()
+      }).eq("id", id);
       if (cErr) throw new Error("Failed to activate contract");
 
       await supabase.from("transactions").insert([
