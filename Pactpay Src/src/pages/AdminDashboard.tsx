@@ -589,11 +589,12 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Details</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Stripe Ref</TableHead>
+                    <TableHead className="w-[130px]">Type</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead className="w-[200px]">Contract</TableHead>
+                    <TableHead className="w-[110px]">Amount</TableHead>
+                    <TableHead className="w-[130px]">Date</TableHead>
+                    <TableHead className="w-[120px]">Stripe Ref</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -630,15 +631,15 @@ export default function AdminDashboard() {
                     if (filteredTransactions.length === 0) {
                       return (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                            No transactions found
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                            No transactions match your search
                           </TableCell>
                         </TableRow>
                       );
                     }
 
                     return filteredTransactions.map(t => {
-                      // Derived logic for badges and details
+                      // Derived logic for badges
                       let effectiveType = t.type;
                       if (t.type === 'deposit') {
                         effectiveType = (t.metadata?.contract_id || t.contract_id) ? 'escrow' : 'wallet_topup';
@@ -650,18 +651,18 @@ export default function AdminDashboard() {
                       const toUser = users.find(u => u.id === t.to_user_id);
                       
                       const contractName = contract?.title || "—";
-                      const fromName = fromUser?.full_name || "Unknown User";
-                      const toName = toUser?.full_name || "Unknown User";
+                      const fromName = fromUser?.full_name || "Unknown";
+                      const toName = toUser?.full_name || "Unknown";
 
-                      // Build Contextual Details
-                      let details = "Transaction details";
+                      // Build simplified Action string
+                      let actionStr = "Transaction";
                       switch(effectiveType) {
-                        case 'wallet_topup': details = `Wallet top up by ${toName || fromName}`; break;
-                        case 'escrow': details = `Escrow deposit by ${fromName} for ${contractName}`; break;
-                        case 'release': details = `Milestone payment to ${toName} — ${contractName}`; break;
-                        case 'fee': details = `Platform fee from ${fromName} — ${contractName}`; break;
-                        case 'refund': details = `Refund to ${toName} — ${contractName}`; break;
-                        case 'withdrawal': details = `Withdrawal by ${fromName}`; break;
+                        case 'wallet_topup': actionStr = `Wallet top up by ${toName || fromName}`; break;
+                        case 'escrow': actionStr = `Escrow deposit by ${fromName}`; break;
+                        case 'release': actionStr = `Milestone payment to ${toName}`; break;
+                        case 'fee': actionStr = `Platform fee from ${fromName}`; break;
+                        case 'refund': actionStr = `Refund to ${toName}`; break;
+                        case 'withdrawal': actionStr = `Withdrawal by ${fromName}`; break;
                       }
 
                       // Format Date
@@ -690,8 +691,21 @@ export default function AdminDashboard() {
                               {effectiveType === 'escrow' ? 'Escrow Deposit' : effectiveType.replace('_', ' ')}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[250px] truncate font-medium text-foreground">
-                            {details}
+                          <TableCell className="font-medium text-foreground">
+                            {actionStr}
+                          </TableCell>
+                          <TableCell>
+                            {contract ? (
+                              <div 
+                                className="max-w-[190px] truncate cursor-pointer hover:text-primary transition-colors underline-offset-4 hover:underline"
+                                title={contractName}
+                                onClick={() => navigate(`/contracts/${contract.id}`)}
+                              >
+                                {contractName.length > 25 ? `${contractName.substring(0, 25)}...` : contractName}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell className={`font-bold ${
                             (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
@@ -709,7 +723,8 @@ export default function AdminDashboard() {
                                   variant="ghost" 
                                   size="icon" 
                                   className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     navigator.clipboard.writeText(stripeRef);
                                     toast.success("Reference copied");
                                   }}
