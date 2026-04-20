@@ -558,20 +558,19 @@ export default function AdminDashboard() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
                     placeholder="Search ledger..." 
-                    className="pl-9"
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
                   />
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {["all", "deposit", "escrowed", "released", "refund", "fee"].map((s) => (
+                {["all", "deposit", "escrow", "released", "refund", "fee"].map((s) => (
                   <Button 
                     key={s}
                     size="sm" 
-                    variant={txFilter === (s === "escrowed" ? "escrow" : s === "released" ? "release" : s) ? "hero" : "outline"}
+                    variant={txFilter === (s === "released" ? "release" : s) ? "hero" : "outline"}
                     className="capitalize"
-                    onClick={() => setTxFilter(s === "escrowed" ? "escrow" : s === "released" ? "release" : s)}
+                    onClick={() => setTxFilter(s === "released" ? "release" : s)}
                   >
                     {s}
                   </Button>
@@ -595,23 +594,35 @@ export default function AdminDashboard() {
                        (t.from_user_id || "").toLowerCase().includes(txSearch.toLowerCase())) &&
                       (txFilter === "all" || t.type === txFilter || (txFilter === "deposit" && t.type === "wallet_topup"))
                     )
-                    .map(t => (
-                    <TableRow key={t.id}>
-                      <TableCell><Badge variant="outline" className="uppercase">{t.type === 'escrow' ? 'escrowed' : t.type === 'release' ? 'released' : t.type}</Badge></TableCell>
-                      <TableCell className={`font-semibold ${(t.type === 'deposit' || t.type === 'wallet_topup') ? 'text-blue-500' : t.type === 'fee' ? 'text-destructive' : 'text-primary'}`}>
-                        ${t.amount?.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[200px]" title={t.to_user_id || t.from_user_id}>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold text-foreground overflow-hidden text-ellipsis italic opacity-70">
-                            {t.metadata?.contract_title || "Pactpay Transaction"}
-                          </span>
-                          <span>{t.to_user_id ? `To: ${t.to_user_id}` : `From: ${t.from_user_id}`}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{t.id}</TableCell>
-                    </TableRow>
-                  ))}
+                    .map(t => {
+                      let displayedAmount = t.amount;
+                      
+                      // For Escrow rows, show the REMAINING balance
+                      if (t.type === 'escrow') {
+                        const relatedOut = transactions
+                          .filter(tx => (tx.type === 'release' || tx.type === 'refund') && tx.metadata?.contract_id === t.metadata?.contract_id)
+                          .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        displayedAmount = t.amount - relatedOut;
+                      }
+
+                      return (
+                        <TableRow key={t.id}>
+                          <TableCell><Badge variant="outline" className="uppercase">{t.type === 'release' ? 'released' : t.type}</Badge></TableCell>
+                          <TableCell className={`font-semibold ${(t.type === 'deposit' || t.type === 'wallet_topup') ? 'text-blue-500' : t.type === 'fee' ? 'text-destructive' : 'text-primary'}`}>
+                            ${displayedAmount?.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[200px]" title={t.to_user_id || t.from_user_id}>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-foreground overflow-hidden text-ellipsis italic opacity-70">
+                                {t.metadata?.contract_title || "Pactpay Transaction"}
+                              </span>
+                              <span>{t.to_user_id ? `To: ${t.to_user_id}` : `From: ${t.from_user_id}`}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{t.id}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                 </TableBody>
               </Table>
             </div>
