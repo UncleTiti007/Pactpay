@@ -25,8 +25,8 @@ const milestoneStatusColors: Record<string, string> = {
   pending: "bg-gray-500/20 text-gray-400 border-gray-500/30",
   in_review: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   revision: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  approved: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  released: "bg-green-500/20 text-green-400 border-green-500/30",
+  approved: "bg-green-500/20 text-green-400 border-green-500/30",
+  completed: "bg-green-500/20 text-green-400 border-green-500/30",
 };
 
 const ContractDetail = () => {
@@ -243,40 +243,36 @@ const ContractDetail = () => {
       const ms = releasingMilestone;
       if (ms.status === "completed") throw new Error("Milestone already released");
 
-      const { error: msErr } = await supabase.from("milestones").update({ status: "completed" }).eq("id", ms.id);
-      if (msErr) throw new Error("Failed to update milestone status");
+      // We only update the status. The database trigger (tr_milestone_release) 
+      // handles the wallet transfer and transaction recording automatically.
+      const { error: msErr } = await supabase
+        .from("milestones")
+        .update({ status: "completed" })
+        .eq("id", ms.id);
+        
+      if (msErr) throw msErr;
 
+      // Notify the freelancer
       if (contract.freelancer_id) {
-        const { data: profile } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.freelancer_id).single();
-        const newBalance = (profile?.wallet_balance || 0) + ms.amount;
-        
-        await supabase.from("profiles").update({ wallet_balance: newBalance }).eq("id", contract.freelancer_id);
-        
-        await supabase.from("transactions").insert({
-          type: "release", amount: ms.amount, to_user_id: contract.freelancer_id, metadata: { contract_id: id, milestone_id: ms.id }
-        });
-        
         await supabase.from("notifications").insert({
-          user_id: contract.freelancer_id, type: "milestone_approved", message: `Milestone "${ms.title || ms.name}" approved! $${ms.amount.toLocaleString()} has been released to your wallet.`
+          user_id: contract.freelancer_id,
+          type: "milestone_approved",
+          message: `Milestone "${ms.title || ms.name}" approved! $${ms.amount.toLocaleString()} has been released to your wallet.`,
+          link: `/contracts/${contract.id}`
         });
-      }
-
-      const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", id);
-      const allCompleted = allMs?.every((m: any) => m.status === "completed");
-      
-      if (allCompleted) {
-        await supabase.from("contracts").update({ status: "completed" }).eq("id", id);
       }
 
       const { data: { session } } = await supabase.auth.getSession();
       await supabase.functions.invoke("send-email", {
         body: { type: "milestone_released", contract_id: id, milestone_id: ms.id }
       });
-      toast.success("Funds released to freelancer!");
+
+      toast.success("Milestone approved and funds released!");
       setReleasingMilestone(null);
       fetchContract();
     } catch (err: any) {
-      toast.error("Failed to release funds: " + err.message);
+      console.error("Release error:", err);
+      toast.error("Failed to release funds: " + (err.message || "Unknown error"));
     } finally {
       setFunding(false);
     }
@@ -997,7 +993,7 @@ const ContractDetail = () => {
                             </Button>
                           )}
 
-                          {m.status === "released" && (
+                          {m.status === "completed" && (
                             <span className="text-xs text-green-400 font-medium flex items-center gap-1">
                               <CheckCircle className="h-3 w-3" /> Released
                             </span>
