@@ -14,6 +14,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import KYC from "./pages/KYC";
 import Profile from "./pages/Profile";
+import Transactions from "./pages/Transactions";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ const AppContent = () => {
       <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/kyc" element={<KYC />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/transactions" element={<Transactions />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

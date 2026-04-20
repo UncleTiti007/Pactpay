@@ -110,24 +110,23 @@ const Dashboard = () => {
         setKycSubmitted(!!profile.id_doc_front_url);
       }
 
-      // Total earned
-      const { data: txs } = await supabase
-        .from("transactions")
-        .select("amount")
-        .eq("to_user_id", user.id)
-        .eq("type", "release");
+      // Total earned/spent
+      const freelancerTxsQuery = supabase.from("transactions").select("amount").eq("to_user_id", user.id).eq("type", "release");
+      const clientTxsQuery = supabase.from("transactions").select("amount").eq("from_user_id", user.id).eq("type", "release");
       
-      if (txs) {
-        const sum = txs.reduce((acc, tx) => acc + (tx.amount || 0), 0);
-        setTotalEarned(sum);
-      }
+      const [{ data: earnedTxs }, { data: spentTxs }] = await Promise.all([freelancerTxsQuery, clientTxsQuery]);
+      
+      const earned = earnedTxs?.reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
+      const spent = spentTxs?.reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
+      
+      setTotalEarned(earned);
 
-      // Pending approval count
+      // Pending action count - milestones in review where user is either client or freelancer
       const { count } = await supabase
         .from("milestones")
-        .select("id, contracts!inner(client_id)", { count: "exact" })
+        .select("id, contracts!inner(client_id, freelancer_id)", { count: "exact" })
         .eq("status", "in_review")
-        .eq("contracts.client_id", user.id);
+        .or(`client_id.eq.${user.id},freelancer_id.eq.${user.id}`, { foreignTable: "contracts" });
       
       setPendingApproval(count || 0);
     } catch (err) {
@@ -136,6 +135,8 @@ const Dashboard = () => {
       setLoadingContracts(false);
     }
   };
+
+  const totalOngoingCount = contracts.filter(c => c.status === "active").length;
 
   const firstName =
     user?.user_metadata?.full_name?.split(" ")[0] ||
@@ -218,9 +219,11 @@ const Dashboard = () => {
                 New Contract
               </Link>
             </Button>
-            <Button variant="outline" className="border-border/50" disabled={isPendingApproval}>
-              <ArrowRightLeft className="mr-2 h-4 w-4" />
-              View All Transactions
+            <Button variant="outline" className="border-border/50" disabled={isPendingApproval} asChild>
+              <Link to="/transactions">
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                View All Transactions
+              </Link>
             </Button>
           </div>
         </div>
@@ -229,7 +232,7 @@ const Dashboard = () => {
         <div className="mb-8">
           <StatsBar
             walletBalance={walletBalance}
-            activeContracts={contracts.filter((c) => c.status === "active").length}
+            activeContracts={totalOngoingCount}
             totalEarned={totalEarned}
             pendingApproval={pendingApproval}
             onTopUp={() => setIsTopUpOpen(true)}
