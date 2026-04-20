@@ -591,7 +591,7 @@ export default function AdminDashboard() {
                   <TableRow>
                     <TableHead className="w-[130px]">Type</TableHead>
                     <TableHead>Action</TableHead>
-                    <TableHead className="w-[200px]">Contract</TableHead>
+                    <TableHead>Contract</TableHead>
                     <TableHead className="w-[110px]">Amount</TableHead>
                     <TableHead className="w-[130px]">Date</TableHead>
                     <TableHead className="w-[120px]">Stripe Ref</TableHead>
@@ -646,11 +646,12 @@ export default function AdminDashboard() {
                       }
 
                       // Resolve Contract and Users
-                      const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
+                      const contractId = t.metadata?.contract_id || t.contract_id;
+                      const contract = contracts.find(c => c.id === contractId);
                       const fromUser = users.find(u => u.id === t.from_user_id);
                       const toUser = users.find(u => u.id === t.to_user_id);
                       
-                      const contractName = contract?.title || "—";
+                      const contractName = contract?.title || "";
                       const fromName = fromUser?.full_name || "Unknown";
                       const toName = toUser?.full_name || "Unknown";
 
@@ -691,21 +692,18 @@ export default function AdminDashboard() {
                               {effectiveType === 'escrow' ? 'Escrow Deposit' : effectiveType.replace('_', ' ')}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-medium text-foreground">
+                          <TableCell className="font-medium text-foreground pr-4">
                             {actionStr}
                           </TableCell>
                           <TableCell>
-                            {contract ? (
+                            {contract && contractId ? (
                               <div 
-                                className="max-w-[190px] truncate cursor-pointer hover:text-primary transition-colors underline-offset-4 hover:underline"
-                                title={contractName}
+                                className="cursor-pointer hover:text-primary transition-colors underline-offset-4 hover:underline leading-relaxed"
                                 onClick={() => navigate(`/contracts/${contract.id}`)}
                               >
-                                {contractName.length > 25 ? `${contractName.substring(0, 25)}...` : contractName}
+                                {contractName}
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                            ) : null}
                           </TableCell>
                           <TableCell className={`font-bold ${
                             (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
