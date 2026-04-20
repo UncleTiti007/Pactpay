@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { X, FileText, ImageIcon, CheckCircle, XCircle, Search, Filter, ShieldAlert, ShieldCheck, Lock, Unlock, MoreVertical } from "lucide-react";
+import { X, FileText, ImageIcon, CheckCircle, XCircle, Search, Filter, ShieldAlert, ShieldCheck, Lock, Unlock, MoreVertical, Copy } from "lucide-react";
 import { 
   Select, 
   SelectContent, 
@@ -557,22 +557,30 @@ export default function AdminDashboard() {
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search ledger..." 
+                    placeholder="Search by amount or type..." 
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
                   />
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {["all", "deposit", "escrow", "released", "refund", "fee"].map((s) => (
+                {[
+                  { label: "All", value: "all" },
+                  { label: "Wallet Topup", value: "wallet_topup" },
+                  { label: "Escrow Deposit", value: "escrow" },
+                  { label: "Milestone Release", value: "release" },
+                  { label: "Fee", value: "fee" },
+                  { label: "Refund", value: "refund" },
+                  { label: "Withdrawal", value: "withdrawal" }
+                ].map((s) => (
                   <Button 
-                    key={s}
+                    key={s.value}
                     size="sm" 
-                    variant={txFilter === (s === "released" ? "release" : s) ? "hero" : "outline"}
+                    variant={txFilter === s.value ? "hero" : "outline"}
                     className="capitalize"
-                    onClick={() => setTxFilter(s === "released" ? "release" : s)}
+                    onClick={() => setTxFilter(s.value)}
                   >
-                    {s}
+                    {s.label}
                   </Button>
                 ))}
               </div>
@@ -581,45 +589,94 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>Type</TableHead><TableHead>Amount</TableHead>
-                    <TableHead>To / From</TableHead><TableHead>Tx ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Contract</TableHead>
+                    <TableHead>From</TableHead>
+                    <TableHead>To</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Stripe Ref</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactions
-                    .filter(t => 
-                      (t.type.toLowerCase().includes(txSearch.toLowerCase()) || 
-                       t.id.toLowerCase().includes(txSearch.toLowerCase()) ||
-                       (t.to_user_id || "").toLowerCase().includes(txSearch.toLowerCase()) ||
-                       (t.from_user_id || "").toLowerCase().includes(txSearch.toLowerCase())) &&
-                      (txFilter === "all" || t.type === txFilter || (txFilter === "deposit" && t.type === "wallet_topup"))
-                    )
-                    .map(t => {
-                      let displayedAmount = t.amount;
+                    .filter(t => {
+                      const searchLower = txSearch.toLowerCase();
+                      const matchesSearch = 
+                        t.type.toLowerCase().includes(searchLower) || 
+                        t.amount.toString().includes(searchLower);
                       
-                      // For Escrow rows, show the REMAINING balance
-                      if (t.type === 'escrow') {
-                        const relatedOut = transactions
-                          .filter(tx => (tx.type === 'release' || tx.type === 'refund') && tx.metadata?.contract_id === t.metadata?.contract_id)
-                          .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-                        displayedAmount = t.amount - relatedOut;
-                      }
+                      const matchesFilter = txFilter === "all" || t.type === txFilter;
+                      return matchesSearch && matchesFilter;
+                    })
+                    .map(t => {
+                      // Resolve Contract
+                      const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
+                      const contractTitle = contract ? contract.title : "—";
+
+                      // Resolve Users
+                      const fromUser = users.find(u => u.id === t.from_user_id);
+                      const toUser = users.find(u => u.id === t.to_user_id);
+                      const fromName = fromUser ? (fromUser.full_name || fromUser.id.substring(0, 8)) : "—";
+                      const toName = toUser ? (toUser.full_name || toUser.id.substring(0, 8)) : "—";
+
+                      // Format Date
+                      const formattedDate = new Intl.DateTimeFormat('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      }).format(new Date(t.created_at));
+
+                      // Badge Colors
+                      const badgeStyles: Record<string, string> = {
+                        wallet_topup: "bg-purple-500/20 text-purple-500 border-purple-500/30",
+                        escrow: "bg-blue-500/20 text-blue-500 border-blue-500/30",
+                        release: "bg-emerald-500/20 text-emerald-500 border-emerald-500/30",
+                        fee: "bg-amber-500/20 text-amber-500 border-amber-500/30",
+                        refund: "bg-red-500/20 text-red-500 border-red-500/30",
+                        withdrawal: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+                      };
+
+                      const stripeRef = t.metadata?.stripe_payment_id || t.metadata?.stripe_charge_id || "—";
 
                       return (
-                        <TableRow key={t.id}>
-                          <TableCell><Badge variant="outline" className="uppercase">{t.type === 'release' ? 'released' : t.type}</Badge></TableCell>
-                          <TableCell className={`font-semibold ${(t.type === 'deposit' || t.type === 'wallet_topup') ? 'text-blue-500' : t.type === 'fee' ? 'text-destructive' : 'text-primary'}`}>
-                            ${displayedAmount?.toLocaleString()}
+                        <TableRow key={t.id} className="hover:bg-muted/30 transition-colors text-xs">
+                          <TableCell>
+                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${badgeStyles[t.type] || ""}`}>
+                              {t.type === 'escrow' ? 'Escrow Deposit' : t.type.replace('_', ' ')}
+                            </Badge>
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[200px]" title={t.to_user_id || t.from_user_id}>
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold text-foreground overflow-hidden text-ellipsis italic opacity-70">
-                                {t.metadata?.contract_title || "Pactpay Transaction"}
-                              </span>
-                              <span>{t.to_user_id ? `To: ${t.to_user_id}` : `From: ${t.from_user_id}`}</span>
-                            </div>
+                          <TableCell className="max-w-[120px] truncate font-medium" title={contractTitle}>
+                            {contractTitle}
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{t.id}</TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[100px]" title={fromName}>{fromName}</TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[100px]" title={toName}>{toName}</TableCell>
+                          <TableCell className={`font-bold ${
+                            (t.type === 'release' || t.type === 'wallet_topup') ? 'text-emerald-500' : 
+                            (t.type === 'fee') ? 'text-amber-500' : 
+                            (t.type === 'refund') ? 'text-red-500' : 'text-foreground'
+                          }`}>
+                            ${t.amount?.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">{formattedDate}</TableCell>
+                          <TableCell>
+                            {stripeRef !== "—" ? (
+                              <div className="flex items-center gap-2 group">
+                                <span className="text-[10px] font-mono text-muted-foreground">{stripeRef.substring(0, 16)}</span>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(stripeRef);
+                                    toast.success("Reference copied");
+                                  }}
+                                >
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : "—"}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
