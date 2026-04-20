@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
 
 const statusColors: Record<string, string> = {
@@ -58,6 +58,13 @@ const ContractDetail = () => {
   const [deletingContract, setDeletingContract] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
+
+  // Milestone Submission State
+  const [submittingMilestoneId, setSubmittingMilestoneId] = useState<string | null>(null);
+  const [submissionNote, setSubmissionNote] = useState("");
+  const [submissionLink, setSubmissionLink] = useState("");
+  const [submissionFile, setSubmissionFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -249,6 +256,65 @@ const ContractDetail = () => {
       toast.error("Failed to release funds: " + err.message);
     } finally {
       setFunding(false);
+    }
+  };
+
+  const uploadSubmissionFile = async (file: File): Promise<string | null> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+    const filePath = `${user?.id}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('contract-submissions')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      toast.error("File upload failed: " + uploadError.message);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('contract-submissions')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleMarkReadyWithSubmission = async (milestoneId: string) => {
+    setIsUploading(true);
+    try {
+      let finalUrl = submissionLink;
+
+      if (submissionFile) {
+        const uploadedUrl = await uploadSubmissionFile(submissionFile);
+        if (!uploadedUrl) {
+          setIsUploading(false);
+          return;
+        }
+        finalUrl = uploadedUrl;
+      }
+
+      const { error } = await supabase
+        .from("milestones")
+        .update({
+          status: "in_review",
+          submission_note: submissionNote,
+          submission_url: finalUrl
+        })
+        .eq("id", milestoneId);
+
+      if (error) throw error;
+
+      toast.success("Milestone submitted for review!");
+      setSubmittingMilestoneId(null);
+      setSubmissionNote("");
+      setSubmissionLink("");
+      setSubmissionFile(null);
+      fetchContract();
+    } catch (error: any) {
+      toast.error("Failed to submit milestone: " + error.message);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -721,6 +787,114 @@ const ContractDetail = () => {
                           </div>
                         )}
 
+                        {/* Submission details display (for Client or completed milestones) */}
+                        {(m.submission_note || m.submission_url) && (
+                          <div className="mt-4 p-3 rounded bg-primary/5 border border-primary/10 space-y-2">
+                            <p className="text-xs font-medium text-primary flex items-center gap-1 uppercase tracking-tight">
+                              <FileText className="h-3 w-3" /> Submission Details
+                            </p>
+                            {m.submission_note && (
+                              <p className="text-sm text-foreground italic">"{m.submission_note}"</p>
+                            )}
+                            {m.submission_url && (
+                              <div className="flex items-center gap-2">
+                                {m.submission_url.includes('supabase.co') ? (
+                                  <a 
+                                    href={m.submission_url} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="text-xs flex items-center gap-1.5 text-blue-400 hover:underline bg-blue-400/10 px-2 py-1 rounded"
+                                  >
+                                    <Download className="h-3.3 w-3.3" /> Download Attached Document
+                                  </a>
+                                ) : (
+                                  <a 
+                                    href={m.submission_url} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="text-xs flex items-center gap-1.5 text-blue-400 hover:underline bg-blue-400/10 px-2 py-1 rounded"
+                                  >
+                                    <ExternalLink className="h-3.3 w-3.3" /> View Deliverable Link
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Freelancer Submission Form */}
+                        {submittingMilestoneId === m.id && (
+                          <div className="mt-4 p-4 rounded-lg bg-card border border-primary/30 space-y-4 animate-in fade-in slide-in-from-top-2">
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium text-muted-foreground uppercase">Submission Note</label>
+                              <Textarea 
+                                placeholder="Details about this milestone..." 
+                                value={submissionNote}
+                                onChange={(e) => setSubmissionNote(e.target.value)}
+                                className="min-h-[80px] bg-background/50 text-sm"
+                              />
+                            </div>
+                            
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium text-muted-foreground uppercase">Deliverable Link</label>
+                                <div className="relative">
+                                  <Link className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                  <Input 
+                                    placeholder="https://..." 
+                                    value={submissionLink}
+                                    onChange={(e) => setSubmissionLink(e.target.value)}
+                                    className="pl-9 bg-background/50 text-sm"
+                                    disabled={!!submissionFile}
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <label className="text-xs font-medium text-muted-foreground uppercase">Or Upload File</label>
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    className="w-full relative h-10 bg-background/50 border-dashed hover:border-primary transition-colors"
+                                    disabled={!!submissionLink}
+                                  >
+                                    <input
+                                      type="file"
+                                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                      onChange={(e) => setSubmissionFile(e.target.files?.[0] || null)}
+                                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip"
+                                    />
+                                    <Upload className="h-4 w-4 mr-2 text-primary" />
+                                    <span className="text-xs truncate">
+                                      {submissionFile ? submissionFile.name : "Choose file..."}
+                                    </span>
+                                  </Button>
+                                  {submissionFile && (
+                                    <Button size="icon" variant="ghost" className="h-10 w-10 text-muted-foreground hover:text-red-400" onClick={() => setSubmissionFile(null)}>
+                                      <Pencil className="h-4 w-4 rotate-45" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 justify-end pt-2">
+                              <Button size="sm" variant="ghost" onClick={() => setSubmittingMilestoneId(null)}>
+                                Cancel
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="hero" 
+                                onClick={() => handleMarkReadyWithSubmission(m.id)}
+                                disabled={isUploading}
+                              >
+                                {isUploading ? "Uploading..." : "Submit for Review"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap gap-2 mt-2">
                           {isClient && m.status === "in_review" && contract.status === "active" && (
                             <>
@@ -745,9 +919,9 @@ const ContractDetail = () => {
                               </Button>
                             )}
 
-                          {isFreelancer && m.status === "pending" && contract.status === "active" && (
-                            <Button size="sm" variant="hero" onClick={() => markReady(m.id)}>
-                              Mark Ready for Review
+                          {isFreelancer && ["pending", "revision"].includes(m.status) && contract.status === "active" && !submittingMilestoneId && (
+                            <Button size="sm" variant="hero" onClick={() => setSubmittingMilestoneId(m.id)}>
+                              {m.status === "revision" ? "Re-submit for Review" : "Mark Ready for Review"}
                             </Button>
                           )}
 
