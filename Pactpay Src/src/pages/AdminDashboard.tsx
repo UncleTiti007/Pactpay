@@ -246,6 +246,11 @@ export default function AdminDashboard() {
   }
 
   const totalRevenue = transactions.filter(t => t.type === "fee").reduce((sum, t) => sum + t.amount, 0);
+  
+  // Calculate Active Escrow: Total Escrow In - (Released + Refunded)
+  const totalEscrowIn = transactions.filter(t => t.type === "escrow").reduce((sum, t) => sum + t.amount, 0);
+  const totalEscrowOut = transactions.filter(t => t.type === "release" || t.type === "refund").reduce((sum, t) => sum + t.amount, 0);
+  const activeEscrow = totalEscrowIn - totalEscrowOut;
 
   return (
     <div className="min-h-screen bg-background">
@@ -256,9 +261,15 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
             <p className="text-muted-foreground mt-1">Platform overview and dispute resolution center</p>
           </div>
-          <div className="glass-card px-6 py-3 flex items-center gap-4 border-primary/20 bg-primary/5">
-            <span className="text-sm font-medium text-muted-foreground">Total Platform Revenue</span>
-            <span className="text-2xl font-bold text-primary">${totalRevenue.toLocaleString()}</span>
+          <div className="flex gap-4">
+            <div className="glass-card px-6 py-3 flex flex-col border-primary/20 bg-primary/5">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap">Platform Revenue</span>
+              <span className="text-xl font-bold text-primary">${totalRevenue.toLocaleString()}</span>
+            </div>
+            <div className="glass-card px-6 py-3 flex flex-col border-amber-500/20 bg-amber-500/5">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap">Active Escrow</span>
+              <span className="text-xl font-bold text-amber-500">${activeEscrow.toLocaleString()}</span>
+            </div>
           </div>
         </div>
 
@@ -590,8 +601,13 @@ export default function AdminDashboard() {
                       <TableCell className={`font-semibold ${(t.type === 'deposit' || t.type === 'wallet_topup') ? 'text-blue-500' : t.type === 'fee' ? 'text-destructive' : 'text-primary'}`}>
                         ${t.amount?.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]" title={t.to_user_id || t.from_user_id}>
-                        {t.to_user_id ? `To: ${t.to_user_id}` : `From: ${t.from_user_id}`}
+                      <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[200px]" title={t.to_user_id || t.from_user_id}>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-foreground overflow-hidden text-ellipsis italic opacity-70">
+                            {t.metadata?.contract_title || "Pactpay Transaction"}
+                          </span>
+                          <span>{t.to_user_id ? `To: ${t.to_user_id}` : `From: ${t.from_user_id}`}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-mono truncate max-w-[150px]">{t.id}</TableCell>
                     </TableRow>
