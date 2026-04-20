@@ -557,7 +557,7 @@ export default function AdminDashboard() {
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search by amount or type..." 
+                    placeholder="Search by amount, type, user or contract..." 
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
                   />
@@ -590,35 +590,79 @@ export default function AdminDashboard() {
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead>Type</TableHead>
-                    <TableHead>Contract</TableHead>
-                    <TableHead>From</TableHead>
-                    <TableHead>To</TableHead>
+                    <TableHead>Details</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Stripe Ref</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions
-                    .filter(t => {
-                      const searchLower = txSearch.toLowerCase();
-                      const matchesSearch = 
-                        t.type.toLowerCase().includes(searchLower) || 
-                        t.amount.toString().includes(searchLower);
-                      
-                      const matchesFilter = txFilter === "all" || t.type === txFilter;
-                      return matchesSearch && matchesFilter;
-                    })
-                    .map(t => {
-                      // Resolve Contract
-                      const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
-                      const contractTitle = contract ? contract.title : "—";
+                  {(() => {
+                    const filteredTransactions = transactions
+                      .filter(t => {
+                        // Derived type logic for filtering
+                        let effectiveType = t.type;
+                        if (t.type === 'deposit') {
+                          effectiveType = (t.metadata?.contract_id || t.contract_id) ? 'escrow' : 'wallet_topup';
+                        } else if (t.type === 'wallet_topup') {
+                          effectiveType = 'wallet_topup';
+                        }
 
-                      // Resolve Users
+                        // Resolver Lookups
+                        const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
+                        const fromUser = users.find(u => u.id === t.from_user_id);
+                        const toUser = users.find(u => u.id === t.to_user_id);
+                        
+                        const searchLower = txSearch.toLowerCase();
+                        const matchesFilter = txFilter === "all" || effectiveType === txFilter;
+                        
+                        // Broad Search logic
+                        const matchesSearch = 
+                          effectiveType.toLowerCase().includes(searchLower) || 
+                          t.amount.toString().includes(searchLower) ||
+                          (contract?.title || "").toLowerCase().includes(searchLower) ||
+                          (fromUser?.full_name || "").toLowerCase().includes(searchLower) ||
+                          (toUser?.full_name || "").toLowerCase().includes(searchLower);
+
+                        return matchesFilter && matchesSearch;
+                      });
+
+                    if (filteredTransactions.length === 0) {
+                      return (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                            No transactions found
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+
+                    return filteredTransactions.map(t => {
+                      // Derived logic for badges and details
+                      let effectiveType = t.type;
+                      if (t.type === 'deposit') {
+                        effectiveType = (t.metadata?.contract_id || t.contract_id) ? 'escrow' : 'wallet_topup';
+                      }
+
+                      // Resolve Contract and Users
+                      const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
                       const fromUser = users.find(u => u.id === t.from_user_id);
                       const toUser = users.find(u => u.id === t.to_user_id);
-                      const fromName = fromUser ? (fromUser.full_name || fromUser.id.substring(0, 8)) : "—";
-                      const toName = toUser ? (toUser.full_name || toUser.id.substring(0, 8)) : "—";
+                      
+                      const contractName = contract?.title || "—";
+                      const fromName = fromUser?.full_name || "Unknown User";
+                      const toName = toUser?.full_name || "Unknown User";
+
+                      // Build Contextual Details
+                      let details = "Transaction details";
+                      switch(effectiveType) {
+                        case 'wallet_topup': details = `Wallet top up by ${toName || fromName}`; break;
+                        case 'escrow': details = `Escrow deposit by ${fromName} for ${contractName}`; break;
+                        case 'release': details = `Milestone payment to ${toName} — ${contractName}`; break;
+                        case 'fee': details = `Platform fee from ${fromName} — ${contractName}`; break;
+                        case 'refund': details = `Refund to ${toName} — ${contractName}`; break;
+                        case 'withdrawal': details = `Withdrawal by ${fromName}`; break;
+                      }
 
                       // Format Date
                       const formattedDate = new Intl.DateTimeFormat('en-US', {
@@ -642,19 +686,17 @@ export default function AdminDashboard() {
                       return (
                         <TableRow key={t.id} className="hover:bg-muted/30 transition-colors text-xs">
                           <TableCell>
-                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${badgeStyles[t.type] || ""}`}>
-                              {t.type === 'escrow' ? 'Escrow Deposit' : t.type.replace('_', ' ')}
+                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${badgeStyles[effectiveType] || ""}`}>
+                              {effectiveType === 'escrow' ? 'Escrow Deposit' : effectiveType.replace('_', ' ')}
                             </Badge>
                           </TableCell>
-                          <TableCell className="max-w-[120px] truncate font-medium" title={contractTitle}>
-                            {contractTitle}
+                          <TableCell className="max-w-[250px] truncate font-medium text-foreground">
+                            {details}
                           </TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[100px]" title={fromName}>{fromName}</TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[100px]" title={toName}>{toName}</TableCell>
                           <TableCell className={`font-bold ${
-                            (t.type === 'release' || t.type === 'wallet_topup') ? 'text-emerald-500' : 
-                            (t.type === 'fee') ? 'text-amber-500' : 
-                            (t.type === 'refund') ? 'text-red-500' : 'text-foreground'
+                            (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
+                            (effectiveType === 'fee') ? 'text-amber-500' : 
+                            (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
                           }`}>
                             ${t.amount?.toLocaleString()}
                           </TableCell>
@@ -679,7 +721,8 @@ export default function AdminDashboard() {
                           </TableCell>
                         </TableRow>
                       );
-                    })}
+                    });
+                  })()}
                 </TableBody>
               </Table>
             </div>
