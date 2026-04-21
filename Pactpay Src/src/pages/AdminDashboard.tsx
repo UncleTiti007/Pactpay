@@ -194,6 +194,7 @@ export default function AdminDashboard() {
   const handleApproveWithdrawal = async (t: any) => {
     try {
       const updatedMetadata = { ...t.metadata, status: 'completed' };
+      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
       if (error) throw error;
 
       // Create notification for user
