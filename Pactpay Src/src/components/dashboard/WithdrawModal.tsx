@@ -49,30 +49,22 @@ const WithdrawModal = ({ isOpen, onClose, walletBalance, kycVerified, userId, ba
     setLoading(true);
 
     try {
-      // 1. Deduct from wallet balance instantly to prevent double-spending
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ wallet_balance: walletBalance - numAmount })
-        .eq("id", userId);
+      // Call the atomic database function with string arguments for better type matching
+      const { data, error: rpcError } = await supabase.rpc('process_withdrawal', {
+        p_user_id: userId,
+        p_amount: numAmount.toString(),
+        p_bank_name: bankDetails.bankName,
+        p_account_name: bankDetails.accountName,
+        p_account_number: bankDetails.accountNumber
+      });
 
-      if (profileError) throw profileError;
-
-      // 2. Create withdrawal transaction in 'pending' state
-      const { error: txError } = await supabase
-        .from("transactions")
-        .insert({
-          type: "withdrawal",
-          amount: numAmount,
-          from_user_id: userId,
-          metadata: {
-            status: "pending",
-            bank_name: bankDetails.bankName,
-            account_name: bankDetails.accountName,
-            account_number: bankDetails.accountNumber
-          }
-        });
-
-      if (txError) throw txError;
+      if (rpcError) throw rpcError;
+      
+      // The RPC returns {success: boolean, message?: string}
+      const result = data as { success: boolean; message?: string };
+      if (!result.success) {
+        throw new Error(result.message || "Failed to process withdrawal");
+      }
 
       toast.success("Withdrawal request submitted successfully");
       onSuccess();

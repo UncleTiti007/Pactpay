@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { 
   Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
-  Search, ShieldAlert, LogOut, CheckCircle2, XCircle, MoreVertical, 
-  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, ShieldCheck as ShieldCheckIcon, Lock, Unlock
+  Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical, 
+  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock
 } from "lucide-react";
 import { 
   Select, 
@@ -689,6 +689,8 @@ export default function AdminDashboard() {
                       const fromUser = users.find(u => u.id === t.from_user_id);
                       const toUser = users.find(u => u.id === t.to_user_id);
                       
+                      const stripeRef = t.metadata?.payment_intent_id || t.metadata?.stripe_payment_id || t.metadata?.stripe_id || "—";
+                      
                       const contractName = contract?.title || "";
                       const fromName = fromUser?.full_name || "Unknown";
                       const toName = toUser?.full_name || "Unknown";
@@ -754,7 +756,6 @@ export default function AdminDashboard() {
                             </Badge>
                           </TableCell>
                           <TableCell className={`font-bold ${
-
                             (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
                             (effectiveType === 'fee') ? 'text-amber-500' : 
                             (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'

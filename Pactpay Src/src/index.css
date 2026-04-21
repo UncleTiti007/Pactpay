@@ -78,3 +78,14 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-400;
   }
 }
+
+/* Hide number input spinners (up/down arrows) */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
