@@ -194,8 +194,16 @@ export default function AdminDashboard() {
   const handleApproveWithdrawal = async (t: any) => {
     try {
       const updatedMetadata = { ...t.metadata, status: 'completed' };
-      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
       if (error) throw error;
+
+      // Create notification for user
+      await supabase.from('notifications').insert({
+        user_id: t.from_user_id,
+        type: 'withdrawal_approved',
+        title: 'Withdrawal Approved',
+        message: `Your withdrawal for $${t.amount.toLocaleString()} has been processed and approved.`
+      });
+
       toast.success("Withdrawal approved and marked as completed");
       fetchAllData();
     } catch (err: any) {
@@ -215,6 +223,14 @@ export default function AdminDashboard() {
 
       const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
       if (error) throw error;
+
+      // Create notification for user
+      await supabase.from('notifications').insert({
+        user_id: t.from_user_id,
+        type: 'withdrawal_rejected',
+        title: 'Withdrawal Rejected',
+        message: `Your withdrawal of $${t.amount.toLocaleString()} was rejected. The funds have been returned to your wallet.`
+      });
 
       toast.success("Withdrawal rejected and funds refunded to user");
       fetchAllData();

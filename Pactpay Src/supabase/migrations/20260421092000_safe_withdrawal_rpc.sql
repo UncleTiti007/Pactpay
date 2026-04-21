@@ -1,5 +1,5 @@
 -- Safe Withdrawal Atomic RPC
--- Prevents "ghost deductions" by ensuring balance update and transaction log happen in one atomic step.
+-- Updated: Now includes notification creation for the Activity Feed
 
 -- 1. First, delete all old versions so we start fresh
 DROP FUNCTION IF EXISTS public.process_withdrawal(uuid, numeric, text, text, text);
@@ -56,6 +56,19 @@ BEGIN
       'account_name', p_account_name,
       'account_number', p_account_number
     )
+  );
+
+  -- 5. Create notification for the activity feed
+  INSERT INTO public.notifications (
+    user_id,
+    type,
+    title,
+    message
+  ) VALUES (
+    p_user_id,
+    'withdrawal_pending',
+    'Withdrawal Pending',
+    'Your withdrawal request for $' || TO_CHAR(p_amount, 'FM999,999,990.00') || ' has been received and is pending approval.'
   );
 
   RETURN json_build_object('success', true);
