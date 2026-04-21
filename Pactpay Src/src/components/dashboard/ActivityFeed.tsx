@@ -66,34 +66,43 @@ const ActivityFeed = () => {
       // 3. Normalize transactions into activity-like objects
       const transActivities = (transactions || []).map(t => {
         let message = "";
+        let title = "";
         let type = t.type;
         const isFromMe = t.from_user_id === user?.id;
         const status = t.metadata?.status || 'completed';
 
         if (t.type === 'wallet_topup') {
-          message = `Wallet topped up by $${t.amount.toLocaleString()}`;
+          title = "Wallet Top Up";
+          message = `Successfully added $${t.amount.toLocaleString()} to your wallet.`;
         } else if (t.type === 'withdrawal') {
           if (status === 'completed') {
-            message = `Withdrawal of $${t.amount.toLocaleString()} completed`;
+            title = "Withdrawal Completed";
+            message = `$${t.amount.toLocaleString()} sent to your bank account.`;
             type = 'withdrawal_completed';
           } else if (status === 'failed') {
-            message = `Withdrawal of $${t.amount.toLocaleString()} rejected`;
+            title = "Withdrawal Rejected";
+            message = `Your withdrawal for $${t.amount.toLocaleString()} was not approved.`;
             type = 'withdrawal_failed';
           } else {
-            message = `Withdrawal request for $${t.amount.toLocaleString()}`;
+            title = "Withdrawal Pending";
+            message = `Request for $${t.amount.toLocaleString()} is awaiting admin review.`;
             type = 'withdrawal_pending';
           }
         } else if (t.type === 'release') {
-          message = isFromMe ? `Funds released: $${t.amount.toLocaleString()}` : `Payment received: $${t.amount.toLocaleString()}`;
+          title = isFromMe ? "Funds Released" : "Payment Received";
+          message = isFromMe ? `You released $${t.amount.toLocaleString()} from escrow.` : `You received $${t.amount.toLocaleString()} for a milestone.`;
         } else if (t.type === 'escrow') {
-          message = `Escrow funded: $${t.amount.toLocaleString()}`;
+          title = "Escrow Funded";
+          message = `Contract funds ($${t.amount.toLocaleString()}) are now held securely in escrow.`;
         } else {
-          message = `${t.type.replace('_', ' ')}: $${t.amount.toLocaleString()}`;
+          title = t.type.replace('_', ' ').toUpperCase();
+          message = `Transaction of $${t.amount.toLocaleString()} recorded.`;
         }
 
         return {
           id: `tx-${t.id}`,
           type: type || t.type,
+          title,
           message,
           created_at: t.created_at,
           category: 'transaction'
@@ -157,8 +166,11 @@ const ActivityFeed = () => {
                       <Icon className={`h-4 w-4 ${color}`} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground leading-tight">{item.message}</p>
-                      <p className="mt-1 text-[10px] items-center flex gap-1 text-muted-foreground/70 font-medium">
+                      {item.title && (
+                        <p className="text-sm font-bold text-foreground leading-none mb-1">{item.title}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground leading-tight">{item.message}</p>
+                      <p className="mt-1 text-[10px] items-center flex gap-1 text-muted-foreground/50 font-medium">
                         <span className="capitalize">{item.category}</span>
                         <span>•</span>
                         {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
