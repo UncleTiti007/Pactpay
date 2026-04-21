@@ -13,7 +13,8 @@ import { toast } from "sonner";
 import { 
   Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
   Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical, 
-  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock
+  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
+  DollarSign, TrendingUp
 } from "lucide-react";
 import { 
   Select, 
@@ -299,29 +300,113 @@ export default function AdminDashboard() {
   }
 
   const totalRevenue = transactions.filter(t => t.type === "fee").reduce((sum, t) => sum + t.amount, 0);
+  const totalPayouts = transactions.filter(t => t.type === "revenue_payout").reduce((sum, t) => sum + t.amount, 0);
+  const netEarnings = totalRevenue - totalPayouts;
   
   // Calculate Active Escrow: Total Escrow In - (Released + Refunded)
   const totalEscrowIn = transactions.filter(t => t.type === "escrow").reduce((sum, t) => sum + t.amount, 0);
   const totalEscrowOut = transactions.filter(t => t.type === "release" || t.type === "refund").reduce((sum, t) => sum + t.amount, 0);
   const activeEscrow = totalEscrowIn - totalEscrowOut;
 
+  // Calculate Total System Liquidity (All Wallet Balances)
+  const totalLiquidity = users.reduce((sum, u) => sum + (u.wallet_balance || 0), 0);
+
+  const handleFeePayout = async () => {
+    const amountStr = prompt(`Enter amount to withdraw from platform fees (Available: $${netEarnings.toLocaleString()}):`);
+    if (!amountStr) return;
+    
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Invalid amount");
+      return;
+    }
+
+    if (amount > netEarnings) {
+      toast.error("Amount exceeds available earnings");
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('process_fee_payout', {
+        p_admin_id: user?.id,
+        p_amount: amount,
+        p_metadata: { category: 'admin_withdrawal', reason: 'Platform fee payout' }
+      });
+
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data.message);
+
+      toast.success(`Successfully withdrew $${amount.toLocaleString()} from platform fees`);
+      fetchAllData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to process payout");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
-            <p className="text-muted-foreground mt-1">Platform overview and dispute resolution center</p>
-          </div>
-          <div className="flex gap-4">
-            <div className="glass-card px-6 py-3 flex flex-col border-primary/20 bg-primary/5">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap">Platform Revenue</span>
-              <span className="text-xl font-bold text-primary">${totalRevenue.toLocaleString()}</span>
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
+              <p className="text-muted-foreground mt-1">Platform overview and high-level system management</p>
             </div>
-            <div className="glass-card px-6 py-3 flex flex-col border-amber-500/20 bg-amber-500/5">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground whitespace-nowrap">Active Escrow</span>
-              <span className="text-xl font-bold text-amber-500">${activeEscrow.toLocaleString()}</span>
+            <Button 
+              variant="hero" 
+              onClick={handleFeePayout}
+              className="gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+              disabled={netEarnings <= 0}
+            >
+              <TrendingUp className="h-4 w-4" /> Withdraw Platform Fees
+            </Button>
+          </div>
+
+          {/* NEW Stats Overview Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="glass-card p-5 border-primary/20 bg-primary/5 flex flex-col justify-between">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
+                <DollarSign className="h-3 w-3" /> Total Platform Liquidity
+              </span>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-foreground">${totalLiquidity.toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">USD</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Combined user wallet balances</p>
+            </div>
+
+            <div className="glass-card p-5 border-amber-500/20 bg-amber-500/5 flex flex-col justify-between">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
+                <ShieldCheck className="h-3 w-3" /> Active Escrow Locked
+              </span>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-amber-500">${activeEscrow.toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">USD</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Total funds in active contracts</p>
+            </div>
+
+            <div className="glass-card p-5 border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-between">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
+                <TrendingUp className="h-3 w-3" /> Net Platform Earnings
+              </span>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-emerald-500">${netEarnings.toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">Available</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Total fees collected (payouts deducted)</p>
+            </div>
+
+            <div className="glass-card p-5 border-blue-500/20 bg-blue-500/5 flex flex-col justify-between">
+              <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
+                <Users className="h-3 w-3" /> Total Active Users
+              </span>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-blue-500">{users.length.toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">Active</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Verified and pending users</p>
             </div>
           </div>
         </div>
@@ -607,10 +692,11 @@ export default function AdminDashboard() {
             <div className="mb-6 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h2 className="text-xl font-semibold">Master Ledger</h2>
-                <div className="relative w-full md:w-64">
+                <div className="relative w-full md:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search by amount, type, user or contract..." 
+                    placeholder="Search by amount, type, user or reference..." 
+                    className="pl-9"
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
                   />

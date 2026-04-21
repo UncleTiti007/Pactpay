@@ -12,12 +12,15 @@ const getIconForType = (type: string) => {
     case "milestone_approved":
     case "milestone_completed":
     case "kyc_approved":
+    case "withdrawal_completed":
       return { icon: UserCheck, color: "text-emerald-500", bg: "bg-emerald-500/10" };
     case "wallet_topup":
       return { icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" };
-    case "withdrawal":
     case "withdrawal_pending":
       return { icon: ArrowUpCircle, color: "text-amber-500", bg: "bg-amber-500/10" };
+    case "withdrawal_failed":
+    case "kyc_rejected":
+      return { icon: ShieldCheck, color: "text-red-500", bg: "bg-red-500/10" };
     case "deposit":
     case "payment":
     case "release":
@@ -65,11 +68,21 @@ const ActivityFeed = () => {
         let message = "";
         let type = t.type;
         const isFromMe = t.from_user_id === user?.id;
+        const status = t.metadata?.status || 'completed';
 
         if (t.type === 'wallet_topup') {
           message = `Wallet topped up by $${t.amount.toLocaleString()}`;
         } else if (t.type === 'withdrawal') {
-          message = `Withdrawal request for $${t.amount.toLocaleString()}`;
+          if (status === 'completed') {
+            message = `Withdrawal of $${t.amount.toLocaleString()} completed`;
+            type = 'withdrawal_completed';
+          } else if (status === 'failed') {
+            message = `Withdrawal of $${t.amount.toLocaleString()} rejected`;
+            type = 'withdrawal_failed';
+          } else {
+            message = `Withdrawal request for $${t.amount.toLocaleString()}`;
+            type = 'withdrawal_pending';
+          }
         } else if (t.type === 'release') {
           message = isFromMe ? `Funds released: $${t.amount.toLocaleString()}` : `Payment received: $${t.amount.toLocaleString()}`;
         } else if (t.type === 'escrow') {
@@ -80,7 +93,7 @@ const ActivityFeed = () => {
 
         return {
           id: `tx-${t.id}`,
-          type,
+          type: type || t.type,
           message,
           created_at: t.created_at,
           category: 'transaction'
