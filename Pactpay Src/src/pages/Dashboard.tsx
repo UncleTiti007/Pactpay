@@ -7,6 +7,7 @@ import ContractCard from "@/components/dashboard/ContractCard";
 import StatsBar from "@/components/dashboard/StatsBar";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import TopUpModal from "@/components/dashboard/TopUpModal";
+import WithdrawModal from "@/components/dashboard/WithdrawModal";
 import { Button } from "@/components/ui/button";
 import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,9 +35,11 @@ const Dashboard = () => {
   const [totalEarned, setTotalEarned] = useState(0);
   const [pendingApproval, setPendingApproval] = useState(0);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [kycVerified, setKycVerified] = useState(true);
   const [kycSubmitted, setKycSubmitted] = useState(false);
   const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
+  const [bankDetails, setBankDetails] = useState({ bankName: "", accountName: "", accountNumber: "" });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -97,10 +100,10 @@ const Dashboard = () => {
         setContracts([]);
       }
 
-      // Fetch profile: wallet, KYC status
+      // Fetch profile: wallet, KYC status, and bank info
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("wallet_balance, kyc_verified, id_doc_front_url")
+        .select("wallet_balance, kyc_verified, id_doc_front_url, bank_name, bank_account_name, bank_account_number")
         .eq("id", user.id)
         .maybeSingle();
       
@@ -108,6 +111,11 @@ const Dashboard = () => {
         setWalletBalance(profile.wallet_balance || 0);
         setKycVerified(profile.kyc_verified || false);
         setKycSubmitted(!!profile.id_doc_front_url);
+        setBankDetails({
+          bankName: profile.bank_name || "",
+          accountName: profile.bank_account_name || "",
+          accountNumber: profile.bank_account_number || ""
+        });
       }
 
       // Total earned/spent
@@ -236,6 +244,7 @@ const Dashboard = () => {
             totalEarned={totalEarned}
             pendingApproval={pendingApproval}
             onTopUp={() => setIsTopUpOpen(true)}
+            onWithdraw={() => setIsWithdrawOpen(true)}
             disabled={isPendingApproval}
           />
         </div>
@@ -346,7 +355,18 @@ const Dashboard = () => {
         isOpen={isTopUpOpen}
         onClose={() => setIsTopUpOpen(false)}
         onSuccess={() => {
-          // Force a full reload to ensure we get the latest wallet balance from Supabase
+          window.location.reload();
+        }}
+      />
+
+      <WithdrawModal 
+        isOpen={isWithdrawOpen}
+        onClose={() => setIsWithdrawOpen(false)}
+        walletBalance={walletBalance}
+        kycVerified={kycVerified}
+        userId={user?.id || ""}
+        bankDetails={bankDetails}
+        onSuccess={() => {
           window.location.reload();
         }}
       />

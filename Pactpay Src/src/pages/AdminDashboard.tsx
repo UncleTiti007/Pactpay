@@ -10,7 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { X, FileText, ImageIcon, CheckCircle, XCircle, Search, Filter, ShieldAlert, ShieldCheck, Lock, Unlock, MoreVertical, Copy } from "lucide-react";
+import { 
+  Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
+  Search, ShieldAlert, LogOut, CheckCircle2, XCircle, MoreVertical, 
+  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, ShieldCheck as ShieldCheckIcon, Lock, Unlock
+} from "lucide-react";
 import { 
   Select, 
   SelectContent, 
@@ -185,6 +189,38 @@ export default function AdminDashboard() {
     if (error) toast.error("Failed to approve: " + error.message);
     else { toast.success(`✅ KYC approved for ${kycUser.full_name || kycUser.id}`); fetchAllData(); setKycUser(null); }
     setKycAction(false);
+  };
+
+  const handleApproveWithdrawal = async (t: any) => {
+    try {
+      const updatedMetadata = { ...t.metadata, status: 'completed' };
+      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
+      if (error) throw error;
+      toast.success("Withdrawal approved and marked as completed");
+      fetchAllData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to approve withdrawal");
+    }
+  };
+
+  const handleRejectWithdrawal = async (t: any) => {
+    try {
+      const updatedMetadata = { ...t.metadata, status: 'failed', rejection_reason: 'Admin rejected' };
+      
+      // Refund logic - restore user's wallet balance
+      const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', t.from_user_id).single();
+      if (profile) {
+        await supabase.from('profiles').update({ wallet_balance: (profile.wallet_balance || 0) + t.amount }).eq('id', t.from_user_id);
+      }
+
+      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
+      if (error) throw error;
+
+      toast.success("Withdrawal rejected and funds refunded to user");
+      fetchAllData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reject withdrawal");
+    }
   };
 
   const handleReject = async () => {
@@ -592,9 +628,11 @@ export default function AdminDashboard() {
                     <TableHead className="w-[130px]">Type</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>Contract</TableHead>
+                    <TableHead className="w-[110px]">Status</TableHead>
                     <TableHead className="w-[110px]">Amount</TableHead>
                     <TableHead className="w-[130px]">Date</TableHead>
                     <TableHead className="w-[120px]">Stripe Ref</TableHead>
+                    <TableHead className="w-[80px] text-right">Admin</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -631,7 +669,7 @@ export default function AdminDashboard() {
                     if (filteredTransactions.length === 0) {
                       return (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                             No transactions match your search
                           </TableCell>
                         </TableRow>
@@ -683,7 +721,8 @@ export default function AdminDashboard() {
                         withdrawal: "bg-gray-500/20 text-gray-400 border-gray-500/30",
                       };
 
-                      const stripeRef = t.metadata?.stripe_payment_id || t.metadata?.stripe_charge_id || "—";
+                      // Transaction logic
+                      const status = t.metadata?.status || "completed";
 
                       return (
                         <TableRow key={t.id} className="hover:bg-muted/30 transition-colors text-xs">
@@ -705,7 +744,17 @@ export default function AdminDashboard() {
                               </div>
                             ) : null}
                           </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${
+                              status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
+                              status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
+                              'bg-green-500/20 text-green-500 border-green-500/30'
+                            }`}>
+                              {status}
+                            </Badge>
+                          </TableCell>
                           <TableCell className={`font-bold ${
+
                             (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
                             (effectiveType === 'fee') ? 'text-amber-500' : 
                             (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
@@ -731,6 +780,32 @@ export default function AdminDashboard() {
                                 </Button>
                               </div>
                             ) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {effectiveType === 'withdrawal' && status === 'pending' ? (
+                              <div className="flex justify-end gap-1">
+                                <Button 
+                                  size="icon" 
+                                  variant="outline" 
+                                  className="h-6 w-6 border-green-500/50 text-green-500 hover:bg-green-500/10" 
+                                  onClick={() => handleApproveWithdrawal(t)} 
+                                  title="Approve & Mark Completed"
+                                >
+                                  <Check className="h-3 w-3" />
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="outline" 
+                                  className="h-6 w-6 border-red-500/50 text-red-500 hover:bg-red-500/10" 
+                                  onClick={() => handleRejectWithdrawal(t)} 
+                                  title="Reject & Refund User"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
