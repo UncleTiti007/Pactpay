@@ -202,8 +202,7 @@ export default function AdminDashboard() {
       await supabase.from('notifications').insert({
         user_id: t.from_user_id,
         type: 'withdrawal_approved',
-        title: 'Withdrawal Approved',
-        message: `Your withdrawal for $${t.amount.toLocaleString()} has been processed and approved.`
+        message: `Withdrawal Approved: Your withdrawal for $${t.amount.toLocaleString()} has been processed.`
       });
 
       toast.success("Withdrawal approved and marked as completed");
@@ -230,8 +229,7 @@ export default function AdminDashboard() {
       await supabase.from('notifications').insert({
         user_id: t.from_user_id,
         type: 'withdrawal_rejected',
-        title: 'Withdrawal Rejected',
-        message: `Your withdrawal of $${t.amount.toLocaleString()} was rejected. The funds have been returned to your wallet.`
+        message: `Withdrawal Rejected: Your withdrawal of $${t.amount.toLocaleString()} was not approved. Funds returned to wallet.`
       });
 
       toast.success("Withdrawal rejected and funds refunded to user");
