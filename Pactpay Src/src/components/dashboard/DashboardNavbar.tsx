@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { 
   Bell, BellDot, Plus, LogOut, User as UserIcon, Sun, Moon,
-  Briefcase, DollarSign, ShieldCheck, AlertCircle, CheckCircle2, LifeBuoy
+  Briefcase, DollarSign, ShieldCheck, AlertCircle, CheckCircle2, MessageSquareText
 } from "lucide-react";
 import PactpayLogo from "@/components/PactpayLogo";
 import { toast } from "sonner";
@@ -46,7 +46,6 @@ const DashboardNavbar = () => {
       fetchProfile();
       fetchNotifications();
       
-      const channel = supabase
       // Optimized Real-time notification listener
       const channel = supabase
         .channel(`user-notifications-${user.id}`)
@@ -259,7 +258,7 @@ const DashboardNavbar = () => {
                 <UserIcon className="mr-2 h-4 w-4" /> Profile
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/support")}>
-                <LifeBuoy className="mr-2 h-4 w-4" /> Help & Support
+                <MessageSquareText className="mr-2 h-4 w-4" /> Help & Support
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" /> Sign out

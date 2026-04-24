@@ -58,6 +58,7 @@ const ContractDetail = () => {
   const [deletingContract, setDeletingContract] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [selectedFreelancer, setSelectedFreelancer] = useState<any>(null);
 
   // Milestone Submission State
   const [submittingMilestoneId, setSubmittingMilestoneId] = useState<string | null>(null);
@@ -528,10 +529,13 @@ const ContractDetail = () => {
     }
 
     await supabase.from("contracts").update({ status: "disputed" }).eq("id", id);
-    const { data: { session } } = await supabase.auth.getSession();
-    await supabase.functions.invoke("send-email", {
+    // Mark the specific milestone as disputed
+    await supabase.from("milestones").update({ status: "disputed" }).eq("id", disputingMilestone.id);
+
+    // Non-blocking email attempt
+    supabase.functions.invoke("send-email", {
       body: { type: "dispute", contract_id: id, dispute_id: dispute.id }
-    });
+    }).catch(() => {});
 
     toast.success("Dispute raised. Funds are frozen pending review.");
     setDisputingMilestone(null);

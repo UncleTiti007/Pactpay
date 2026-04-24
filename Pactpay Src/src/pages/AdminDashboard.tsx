@@ -11,18 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { 
-  Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
-  Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical, 
+import {
+  Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle,
+  Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical,
   Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
   DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare, MessageSquareText
 } from "lucide-react";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -56,12 +56,14 @@ export default function AdminDashboard() {
   const [contractSearch, setContractSearch] = useState("");
   const [txSearch, setTxSearch] = useState("");
   const [disputeSearch, setDisputeSearch] = useState("");
+  const [ticketSearch, setTicketSearch] = useState("");
 
   const [userFilter, setUserFilter] = useState("all");
   const [userStatusFilter, setUserStatusFilter] = useState("all");
   const [contractFilter, setContractFilter] = useState("all");
   const [txFilter, setTxFilter] = useState("all");
   const [disputeFilter, setDisputeFilter] = useState("all");
+  const [ticketFilter, setTicketFilter] = useState("all");
   const [kycAction, setKycAction] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -82,36 +84,38 @@ export default function AdminDashboard() {
   const checkAdmin = async () => {
     try {
       const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user?.id).maybeSingle();
-      
+
       const isUserAdmin = profile?.is_admin || user?.user_metadata?.role === 'admin' || user?.email === 'admin@pactpay.com';
-      
-      if (!isUserAdmin) { 
-        toast.error("Unauthorized: Admin access only"); 
-        navigate("/dashboard"); 
-        return; 
+
+      if (!isUserAdmin) {
+        toast.error("Unauthorized: Admin access only");
+        navigate("/dashboard");
+        return;
       }
-      
+
       setIsAdmin(true);
       fetchAllData();
-    } catch (err) { 
+    } catch (err) {
       console.error("Admin check failed:", err);
-      navigate("/dashboard"); 
+      navigate("/dashboard");
     }
   };
 
   const fetchAllData = async () => {
     setLoading(true);
-    const [cRes, uRes, dRes, tRes, tickRes] = await Promise.all([
+    const [cRes, uRes, dRes, tRes, tickRes, mRes] = await Promise.all([
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("disputes").select("*, contracts(title), milestones(name, amount)").order("created_at", { ascending: false }),
+      supabase.from("disputes").select("*").order("created_at", { ascending: false }),
       supabase.from("transactions").select("*").order("created_at", { ascending: false }),
-      supabase.from("support_tickets").select("*, profiles(full_name, email)").order("updated_at", { ascending: false })
+      supabase.from("support_tickets").select("*, profiles(full_name, email)").order("updated_at", { ascending: false }),
+      supabase.from("milestones").select("*")
     ]);
     setContracts(cRes.data || []);
     setUsers(uRes.data || []);
     setDisputes(dRes.data || []);
     setTransactions(tRes.data || []);
+    setMilestones(mRes.data || []);
     setTickets(tickRes.data || []);
     if (tickRes.data && tickRes.data.length > 0 && !selectedAdminTicket) {
       setSelectedAdminTicket(tickRes.data[0]);
@@ -133,23 +137,21 @@ export default function AdminDashboard() {
     if (isAdmin) {
       const ticketChannel = supabase
         .channel('global-admin-tickets')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'support_tickets' 
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'support_tickets'
         }, (payload) => {
           if (payload.eventType === 'UPDATE') {
-            setTickets(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
-            if (selectedAdminTicket?.id === payload.new.id) {
-              setSelectedAdminTicket(prev => prev ? { ...prev, ...payload.new } : null);
-            }
+            // Re-fetch to get the profile association which isn't in the raw payload
+            fetchAllData();
           } else if (payload.eventType === 'INSERT') {
             // Re-fetch all data or just append if complicated join
-            fetchAllData(); 
+            fetchAllData();
           }
         })
         .subscribe();
-      
+
       return () => { supabase.removeChannel(ticketChannel); };
     }
   }, [isAdmin, selectedAdminTicket?.id]);
@@ -157,19 +159,19 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (selectedAdminTicket) {
       fetchAdminMessages(selectedAdminTicket.id);
-      
+
       const channel = supabase
         .channel(`admin-ticket-${selectedAdminTicket.id}`)
-        .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'support_messages', 
-          filter: `ticket_id=eq.${selectedAdminTicket.id}` 
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'support_messages',
+          filter: `ticket_id=eq.${selectedAdminTicket.id}`
         }, (payload) => {
           setAdminMessages(prev => [...prev, payload.new]);
         })
         .subscribe();
-      
+
       return () => { supabase.removeChannel(channel); };
     }
   }, [selectedAdminTicket]);
@@ -188,11 +190,11 @@ export default function AdminDashboard() {
       is_admin_reply: true
     });
 
-    await supabase.from("support_tickets").update({ 
-      status: 'pending user', 
-      updated_at: new Date().toISOString() 
+    await supabase.from("support_tickets").update({
+      status: 'pending user',
+      updated_at: new Date().toISOString()
     }).eq("id", selectedAdminTicket.id);
-    
+
     // Also send a system notification to the user
     await supabase.from("notifications").insert({
       user_id: selectedAdminTicket.user_id,
@@ -208,14 +210,13 @@ export default function AdminDashboard() {
     try {
       const { data: dispute } = await supabase.from("disputes").select("*").eq("id", disputeId).single();
       if (!dispute || dispute.status === "resolved") throw new Error("Dispute invalid or already resolved");
-  
+
       const { data: ms } = await supabase.from("milestones").select("*").eq("id", dispute.milestone_id).single();
       const { data: contract } = await supabase.from("contracts").select("*").eq("id", dispute.contract_id).single();
-  
+
       if (resolution === "release") {
         const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.freelancer_id).single();
         await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.freelancer_id);
-        
         await supabase.from("transactions").insert({
           type: "release", amount: ms.amount, to_user_id: contract.freelancer_id, metadata: { note: "Dispute resolved in favor of freelancer" }
         });
@@ -226,7 +227,6 @@ export default function AdminDashboard() {
       } else if (resolution === "refund") {
         const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.client_id).single();
         await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.client_id);
-        
         await supabase.from("transactions").insert({
           type: "refund", amount: ms.amount, to_user_id: contract.client_id, metadata: { note: "Dispute refunded" }
         });
@@ -235,18 +235,17 @@ export default function AdminDashboard() {
           user_id: contract.client_id, type: "system", message: `Dispute resolved! Funds for "${ms.name}" refunded to your wallet.`
         });
       }
-  
+
       await supabase.from("disputes").update({ status: "resolved", resolution_notes: resolution }).eq("id", dispute.id);
-  
+
       const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract.id);
       const allCompletedOrCancelled = allMs?.every((m: any) => m.status === "completed" || m.status === "cancelled");
-      
       if (allCompletedOrCancelled) {
         await supabase.from("contracts").update({ status: "completed" }).eq("id", contract.id);
       } else {
         await supabase.from("contracts").update({ status: "active" }).eq("id", contract.id);
       }
-  
+
       toast.success(`Dispute resolved! Funds ${resolution === "release" ? "released to freelancer" : "refunded to client"}.`);
       fetchAllData();
     } catch (err: any) {
@@ -309,7 +308,7 @@ export default function AdminDashboard() {
   const handleRejectWithdrawal = async (t: any) => {
     try {
       const updatedMetadata = { ...t.metadata, status: 'failed', rejection_reason: 'Admin rejected' };
-      
+
       // Refund logic - restore user's wallet balance
       const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', t.from_user_id).single();
       if (profile) {
@@ -352,7 +351,7 @@ export default function AdminDashboard() {
         .eq("id", targetUserId);
 
       if (error) throw error;
-      
+
       toast.success(`User account ${newStatus} successfully!`);
       fetchAllData();
     } catch (err: any) {
@@ -372,10 +371,10 @@ export default function AdminDashboard() {
           </a>
         ) : (
           <a href={url} target="_blank" rel="noreferrer" className="block cursor-pointer group hover:opacity-80 transition-opacity">
-            <img 
-              src={url} 
-              alt={label} 
-              className="w-full max-h-48 rounded-lg object-contain border border-border group-hover:border-primary/50" 
+            <img
+              src={url}
+              alt={label}
+              className="w-full max-h-48 rounded-lg object-contain border border-border group-hover:border-primary/50"
             />
           </a>
         )
@@ -394,7 +393,7 @@ export default function AdminDashboard() {
   const totalRevenue = transactions.filter(t => t.type === "fee").reduce((sum, t) => sum + t.amount, 0);
   const totalPayouts = transactions.filter(t => t.type === "revenue_payout").reduce((sum, t) => sum + t.amount, 0);
   const netEarnings = totalRevenue - totalPayouts;
-  
+
   // Calculate Active Escrow: Total Escrow In - (Released + Refunded)
   const totalEscrowIn = transactions.filter(t => t.type === "escrow").reduce((sum, t) => sum + t.amount, 0);
   const totalEscrowOut = transactions.filter(t => t.type === "release" || t.type === "refund").reduce((sum, t) => sum + t.amount, 0);
@@ -406,7 +405,7 @@ export default function AdminDashboard() {
   const handleFeePayout = async () => {
     const amountStr = prompt(`Enter amount to withdraw from platform fees (Available: $${netEarnings.toLocaleString()}):`);
     if (!amountStr) return;
-    
+
     const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0) {
       toast.error("Invalid amount");
@@ -445,8 +444,8 @@ export default function AdminDashboard() {
               <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
               <p className="text-muted-foreground mt-1">Platform overview and high-level system management</p>
             </div>
-            <Button 
-              variant="hero" 
+            <Button
+              variant="hero"
               onClick={handleFeePayout}
               className="gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
               disabled={netEarnings <= 0}
@@ -509,7 +508,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="contracts">Contracts ({contracts.length})</TabsTrigger>
             <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
             <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
-            <TabsTrigger value="support">Support ({tickets.filter(t => t.status === 'open').length})</TabsTrigger>
+            <TabsTrigger value="support">Support ({tickets.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="disputes" className="glass-card p-6">
@@ -518,8 +517,8 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-semibold">Disputes Needing Resolution</h2>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search disputes..." 
+                  <Input
+                    placeholder="Search disputes..."
                     className="pl-9"
                     value={disputeSearch}
                     onChange={(e) => setDisputeSearch(e.target.value)}
@@ -528,9 +527,9 @@ export default function AdminDashboard() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {["all", "open", "resolved"].map((s) => (
-                  <Button 
+                  <Button
                     key={s}
-                    size="sm" 
+                    size="sm"
                     variant={disputeFilter === s ? "hero" : "outline"}
                     className="capitalize"
                     onClick={() => setDisputeFilter(s)}
@@ -551,35 +550,45 @@ export default function AdminDashboard() {
                 </TableHeader>
                 <TableBody>
                   {disputes
-                    .filter(d => 
-                      ((d.contracts?.title || "").toLowerCase().includes(disputeSearch.toLowerCase()) ||
-                       (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
-                      (disputeFilter === "all" || d.status === disputeFilter)
-                    )
+                    .filter(d => {
+                      const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
+                      return (
+                        (contractTitle.toLowerCase().includes(disputeSearch.toLowerCase()) ||
+                          (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
+                        (disputeFilter === "all" || d.status === disputeFilter)
+                      );
+                    })
                     .length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No disputes found</TableCell></TableRow>}
                   {disputes
-                    .filter(d => 
-                      ((d.contracts?.title || "").toLowerCase().includes(disputeSearch.toLowerCase()) ||
-                       (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
-                      (disputeFilter === "all" || d.status === disputeFilter)
-                    )
-                    .map((d) => (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-medium">{d.contracts?.title}</TableCell>
-                      <TableCell>{d.milestones?.name}</TableCell>
-                      <TableCell className="font-semibold">${d.milestones?.amount?.toLocaleString()}</TableCell>
-                      <TableCell className="max-w-xs truncate text-muted-foreground" title={d.reason}>{d.reason}</TableCell>
-                      <TableCell><Badge variant={d.status === "open" ? "destructive" : "outline"}>{d.status}</Badge></TableCell>
-                      <TableCell className="text-right flex justify-end gap-2">
-                        {d.status === "open" && (
-                          <>
-                            <Button size="sm" variant="hero" disabled={resolving} onClick={() => handleResolveDispute(d.id, "release")}>Release to Freelancer</Button>
-                            <Button size="sm" variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10" disabled={resolving} onClick={() => handleResolveDispute(d.id, "refund")}>Refund Client</Button>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                    .filter(d => {
+                      const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
+                      return (
+                        (contractTitle.toLowerCase().includes(disputeSearch.toLowerCase()) ||
+                          (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
+                        (disputeFilter === "all" || d.status === disputeFilter)
+                      );
+                    })
+                    .map((d) => {
+                      const relatedContract = contracts.find(c => c.id === d.contract_id);
+                      const relatedMilestone = milestones.find(m => m.id === d.milestone_id);
+                      return (
+                        <TableRow key={d.id}>
+                          <TableCell className="font-medium">{relatedContract?.title || d.contract_id?.slice(0, 8)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono">{relatedMilestone?.name || relatedMilestone?.title || d.milestone_id?.slice(0, 8) || '—'}</TableCell>
+                          <TableCell className="font-semibold text-amber-500">{relatedMilestone?.amount ? `$${Number(relatedMilestone.amount).toLocaleString()}` : '—'}</TableCell>
+                          <TableCell className="max-w-xs truncate text-muted-foreground" title={d.reason}>{d.reason}</TableCell>
+                          <TableCell><Badge variant={d.status === "open" ? "destructive" : "outline"}>{d.status}</Badge></TableCell>
+                          <TableCell className="text-right flex justify-end gap-2">
+                            {d.status === "open" && (
+                              <>
+                                <Button size="sm" variant="hero" disabled={resolving} onClick={() => handleResolveDispute(d.id, "release")}>Release to Freelancer</Button>
+                                <Button size="sm" variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10" disabled={resolving} onClick={() => handleResolveDispute(d.id, "refund")}>Refund Client</Button>
+                              </>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                 </TableBody>
               </Table>
             </div>
@@ -591,8 +600,8 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-semibold">All Contracts</h2>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search contracts..." 
+                  <Input
+                    placeholder="Search contracts..."
                     className="pl-9"
                     value={contractSearch}
                     onChange={(e) => setContractSearch(e.target.value)}
@@ -601,9 +610,9 @@ export default function AdminDashboard() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {["all", "pending", "active", "completed", "cancelled"].map((s) => (
-                  <Button 
+                  <Button
                     key={s}
-                    size="sm" 
+                    size="sm"
                     variant={contractFilter === s ? "hero" : "outline"}
                     className="capitalize"
                     onClick={() => setContractFilter(s)}
@@ -623,20 +632,20 @@ export default function AdminDashboard() {
                 </TableHeader>
                 <TableBody>
                   {contracts
-                    .filter(c => 
-                      (c.title.toLowerCase().includes(contractSearch.toLowerCase()) || 
-                       c.id.toLowerCase().includes(contractSearch.toLowerCase())) &&
+                    .filter(c =>
+                      (c.title.toLowerCase().includes(contractSearch.toLowerCase()) ||
+                        c.id.toLowerCase().includes(contractSearch.toLowerCase())) &&
                       (contractFilter === "all" || c.status === contractFilter)
                     )
                     .map(c => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.title}</TableCell>
-                      <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
-                      <TableCell>${c.total_amount?.toLocaleString()}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">{c.client_id}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">{c.freelancer_id || 'Pending'}</TableCell>
-                    </TableRow>
-                  ))}
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.title}</TableCell>
+                        <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
+                        <TableCell>${c.total_amount?.toLocaleString()}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">{c.client_id}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">{c.freelancer_id || 'Pending'}</TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
@@ -648,8 +657,8 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-semibold">Registered Users</h2>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search users..." 
+                  <Input
+                    placeholder="Search users..."
                     className="pl-9"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
@@ -701,7 +710,7 @@ export default function AdminDashboard() {
                   {users
                     .filter(u => {
                       const matchesSearch = (u.full_name || "").toLowerCase().includes(userSearch.toLowerCase()) || u.id.toLowerCase().includes(userSearch.toLowerCase());
-                      
+
                       // Filter by KYC Status
                       let matchesKyc = true;
                       if (userFilter === "verified") matchesKyc = u.kyc_verified === true;
@@ -715,67 +724,67 @@ export default function AdminDashboard() {
                       return matchesSearch && matchesKyc && matchesStatus;
                     })
                     .map(u => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.full_name || 'Anonymous'}</TableCell>
-                      <TableCell>{u.is_admin ? <Badge className="bg-primary">Admin</Badge> : <Badge variant="outline">User</Badge>}</TableCell>
-                      <TableCell>
-                        {u.kyc_verified === true
-                          ? <Badge className="bg-success/20 text-success border-success/30">Verified</Badge>
-                          : u.id_doc_front_url
-                            ? <Badge className="bg-warning/20 text-warning border-warning/30">Pending</Badge>
-                            : <Badge variant="outline" className="text-muted-foreground">No KYC</Badge>
-                        }
-                      </TableCell>
-                      <TableCell>
-                        {u.account_status === 'deactivated' 
-                          ? <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> Deactivated</Badge>
-                          : u.account_status === 'locked'
-                            ? <Badge className="bg-warning/20 text-warning border-warning/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> Locked</Badge>
-                            : <Badge className="bg-success/20 text-success border-success/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> Active</Badge>
-                        }
-                      </TableCell>
-                      <TableCell>${u.wallet_balance?.toLocaleString() || '0'}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">{u.id}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {u.id_doc_front_url && (
-                            <Button size="sm" variant="outline" onClick={() => openKycModal(u)} className="h-8">
-                              Review KYC
-                            </Button>
-                          )}
-                          
-                          {!u.is_admin && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>Account Actions</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                
-                                {u.account_status === 'active' ? (
-                                  <>
-                                    <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'deactivated')} className="text-red-500 focus:text-red-500">
-                                      <ShieldAlert className="mr-2 h-4 w-4" /> Deactivate Account
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.full_name || 'Anonymous'}</TableCell>
+                        <TableCell>{u.is_admin ? <Badge className="bg-primary">Admin</Badge> : <Badge variant="outline">User</Badge>}</TableCell>
+                        <TableCell>
+                          {u.kyc_verified === true
+                            ? <Badge className="bg-success/20 text-success border-success/30">Verified</Badge>
+                            : u.id_doc_front_url
+                              ? <Badge className="bg-warning/20 text-warning border-warning/30">Pending</Badge>
+                              : <Badge variant="outline" className="text-muted-foreground">No KYC</Badge>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {u.account_status === 'deactivated'
+                            ? <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> Deactivated</Badge>
+                            : u.account_status === 'locked'
+                              ? <Badge className="bg-warning/20 text-warning border-warning/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> Locked</Badge>
+                              : <Badge className="bg-success/20 text-success border-success/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> Active</Badge>
+                          }
+                        </TableCell>
+                        <TableCell>${u.wallet_balance?.toLocaleString() || '0'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">{u.id}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {u.id_doc_front_url && (
+                              <Button size="sm" variant="outline" onClick={() => openKycModal(u)} className="h-8">
+                                Review KYC
+                              </Button>
+                            )}
+
+                            {!u.is_admin && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>Account Actions</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+
+                                  {u.account_status === 'active' ? (
+                                    <>
+                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'deactivated')} className="text-red-500 focus:text-red-500">
+                                        <ShieldAlert className="mr-2 h-4 w-4" /> Deactivate Account
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'locked')} className="text-amber-500 focus:text-amber-500">
+                                        <Lock className="mr-2 h-4 w-4" /> Lock Account
+                                      </DropdownMenuItem>
+                                    </>
+                                  ) : (
+                                    <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'active')} className="text-emerald-500 focus:text-emerald-500">
+                                      <ShieldCheck className="mr-2 h-4 w-4" /> Reactivate Account
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'locked')} className="text-amber-500 focus:text-amber-500">
-                                      <Lock className="mr-2 h-4 w-4" /> Lock Account
-                                    </DropdownMenuItem>
-                                  </>
-                                ) : (
-                                  <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'active')} className="text-emerald-500 focus:text-emerald-500">
-                                    <ShieldCheck className="mr-2 h-4 w-4" /> Reactivate Account
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
@@ -787,8 +796,8 @@ export default function AdminDashboard() {
                 <h2 className="text-xl font-semibold">Master Ledger</h2>
                 <div className="relative w-full md:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search by amount, type, user or reference..." 
+                  <Input
+                    placeholder="Search by amount, type, user or reference..."
                     className="pl-9"
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
@@ -805,9 +814,9 @@ export default function AdminDashboard() {
                   { label: "Refund", value: "refund" },
                   { label: "Withdrawal", value: "withdrawal" }
                 ].map((s) => (
-                  <Button 
+                  <Button
                     key={s.value}
-                    size="sm" 
+                    size="sm"
                     variant={txFilter === s.value ? "hero" : "outline"}
                     className="capitalize"
                     onClick={() => setTxFilter(s.value)}
@@ -847,13 +856,13 @@ export default function AdminDashboard() {
                         const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
                         const fromUser = users.find(u => u.id === t.from_user_id);
                         const toUser = users.find(u => u.id === t.to_user_id);
-                        
+
                         const searchLower = txSearch.toLowerCase();
                         const matchesFilter = txFilter === "all" || effectiveType === txFilter;
-                        
+
                         // Broad Search logic
-                        const matchesSearch = 
-                          effectiveType.toLowerCase().includes(searchLower) || 
+                        const matchesSearch =
+                          effectiveType.toLowerCase().includes(searchLower) ||
                           t.amount.toString().includes(searchLower) ||
                           (contract?.title || "").toLowerCase().includes(searchLower) ||
                           (fromUser?.full_name || "").toLowerCase().includes(searchLower) ||
@@ -884,16 +893,16 @@ export default function AdminDashboard() {
                       const contract = contracts.find(c => c.id === contractId);
                       const fromUser = users.find(u => u.id === t.from_user_id);
                       const toUser = users.find(u => u.id === t.to_user_id);
-                      
+
                       const stripeRef = t.metadata?.payment_intent_id || t.metadata?.stripe_payment_id || t.metadata?.stripe_id || "—";
-                      
+
                       const contractName = contract?.title || "";
                       const fromName = fromUser?.full_name || "Unknown";
                       const toName = toUser?.full_name || "Unknown";
 
                       // Build simplified Action string
                       let actionStr = "Transaction";
-                      switch(effectiveType) {
+                      switch (effectiveType) {
                         case 'wallet_topup': actionStr = `Wallet top up by ${toName || fromName}`; break;
                         case 'escrow': actionStr = `Escrow deposit by ${fromName}`; break;
                         case 'release': actionStr = `Milestone payment to ${toName}`; break;
@@ -934,7 +943,7 @@ export default function AdminDashboard() {
                           </TableCell>
                           <TableCell>
                             {contract && contractId ? (
-                              <div 
+                              <div
                                 className="cursor-pointer hover:text-primary transition-colors underline-offset-4 hover:underline leading-relaxed"
                                 onClick={() => navigate(`/contracts/${contract.id}`)}
                               >
@@ -943,19 +952,17 @@ export default function AdminDashboard() {
                             ) : null}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${
-                              status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
-                              status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
-                              'bg-green-500/20 text-green-500 border-green-500/30'
-                            }`}>
+                            <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
+                                status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
+                                  'bg-green-500/20 text-green-500 border-green-500/30'
+                              }`}>
                               {status}
                             </Badge>
                           </TableCell>
-                          <TableCell className={`font-bold ${
-                            (effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' : 
-                            (effectiveType === 'fee') ? 'text-amber-500' : 
-                            (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
-                          }`}>
+                          <TableCell className={`font-bold ${(effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' :
+                              (effectiveType === 'fee') ? 'text-amber-500' :
+                                (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
+                            }`}>
                             ${t.amount?.toLocaleString()}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-muted-foreground">{formattedDate}</TableCell>
@@ -963,9 +970,9 @@ export default function AdminDashboard() {
                             {stripeRef !== "—" ? (
                               <div className="flex items-center gap-2 group">
                                 <span className="text-[10px] font-mono text-muted-foreground">{stripeRef.substring(0, 16)}</span>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -981,20 +988,20 @@ export default function AdminDashboard() {
                           <TableCell className="text-right">
                             {effectiveType === 'withdrawal' && status === 'pending' ? (
                               <div className="flex justify-end gap-1">
-                                <Button 
-                                  size="icon" 
-                                  variant="outline" 
-                                  className="h-6 w-6 border-green-500/50 text-green-500 hover:bg-green-500/10" 
-                                  onClick={() => handleApproveWithdrawal(t)} 
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 border-green-500/50 text-green-500 hover:bg-green-500/10"
+                                  onClick={() => handleApproveWithdrawal(t)}
                                   title="Approve & Mark Completed"
                                 >
                                   <Check className="h-3 w-3" />
                                 </Button>
-                                <Button 
-                                  size="icon" 
-                                  variant="outline" 
-                                  className="h-6 w-6 border-red-500/50 text-red-500 hover:bg-red-500/10" 
-                                  onClick={() => handleRejectWithdrawal(t)} 
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-6 w-6 border-red-500/50 text-red-500 hover:bg-red-500/10"
+                                  onClick={() => handleRejectWithdrawal(t)}
                                   title="Reject & Refund User"
                                 >
                                   <X className="h-3 w-3" />
@@ -1019,42 +1026,89 @@ export default function AdminDashboard() {
               <div className="lg:col-span-4 border-r border-border/50 pr-4 flex flex-col">
                 <div className="mb-4">
                   <h2 className="text-xl font-semibold mb-1">Support Tickets</h2>
-                  <p className="text-xs text-muted-foreground">Manage user inquiries and issues</p>
-                </div>
-                <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
-                  {tickets.length === 0 ? (
-                    <div className="py-20 text-center text-muted-foreground italic text-sm">No tickets found</div>
-                  ) : (
-                    tickets.map((t) => (
-                      <div 
-                        key={t.id}
-                        onClick={() => setSelectedAdminTicket(t)}
+                  <p className="text-xs text-muted-foreground mb-3">Manage user inquiries and issues</p>
+
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by subject, name or email..."
+                      className="pl-9 h-8 text-xs bg-muted/20"
+                      value={ticketSearch}
+                      onChange={(e) => setTicketSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {["all", "open", "in progress", "pending user", "resolved", "closed"].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setTicketFilter(s)}
                         className={cn(
-                          "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
-                          selectedAdminTicket?.id === t.id ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20" : ""
+                          "px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all capitalize",
+                          ticketFilter === s
+                            ? "bg-primary/20 text-primary border-primary/50"
+                            : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground/50"
                         )}
                       >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-sm font-bold truncate pr-2">{t.subject}</span>
-                          <Badge variant="outline" className={cn(
-                            "text-[10px] px-1.5 py-0 capitalize",
-                            t.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
-                            t.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-bold" :
-                            t.status === 'pending user' ? "bg-amber-500/20 text-amber-500 border-amber-500/30" :
-                            t.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
-                            "bg-muted text-muted-foreground border-border/50"
-                          )}>
-                            {t.status.replace("pending user", "Pending User")}
-                          </Badge>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
+                  {tickets.filter(t => {
+                    const matchesStatus = ticketFilter === 'all' || t.status === ticketFilter;
+                    const searchLower = ticketSearch.toLowerCase();
+                    const matchesSearch =
+                      t.subject.toLowerCase().includes(searchLower) ||
+                      (t.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
+                      (t.profiles?.email || "").toLowerCase().includes(searchLower);
+                    return matchesStatus && matchesSearch;
+                  }).length === 0 ? (
+                    <div className="py-20 text-center text-muted-foreground italic text-sm">
+                      No {ticketFilter !== 'all' ? ticketFilter : ''} tickets found matching your search
+                    </div>
+                  ) : (
+                    tickets
+                      .filter(t => {
+                        const matchesStatus = ticketFilter === 'all' || t.status === ticketFilter;
+                        const searchLower = ticketSearch.toLowerCase();
+                        const matchesSearch =
+                          t.subject.toLowerCase().includes(searchLower) ||
+                          (t.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
+                          (t.profiles?.email || "").toLowerCase().includes(searchLower);
+                        return matchesStatus && matchesSearch;
+                      })
+                      .map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => setSelectedAdminTicket(t)}
+                          className={cn(
+                            "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
+                            selectedAdminTicket?.id === t.id ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20" : ""
+                          )}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-sm font-bold truncate pr-2">{t.subject}</span>
+                            <Badge variant="outline" className={cn(
+                              "text-[10px] px-1.5 py-0 capitalize",
+                              t.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                                t.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-bold" :
+                                  t.status === 'pending user' ? "bg-amber-500/20 text-amber-500 border-amber-500/30" :
+                                    t.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                      "bg-muted text-muted-foreground border-border/50"
+                            )}>
+                              {t.status.replace("pending user", "Pending User")}
+                            </Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-medium truncate mb-1">
+                            From: {t.profiles?.full_name || t.user_id.slice(0, 8)} ({t.profiles?.email})
+                          </div>
+                          <div className="text-[10px] text-muted-foreground/60 text-right">
+                            {new Date(t.updated_at).toLocaleString()}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted-foreground font-medium truncate mb-1">
-                          From: {t.profiles?.full_name || t.user_id.slice(0,8)} ({t.profiles?.email})
-                        </div>
-                        <div className="text-[10px] text-muted-foreground/60 text-right">
-                          {new Date(t.updated_at).toLocaleString()}
-                        </div>
-                      </div>
-                    ))
+                      ))
                   )}
                 </div>
               </div>
@@ -1071,11 +1125,13 @@ export default function AdminDashboard() {
                     <div className="p-4 bg-background/50 border-b border-border flex justify-between items-center">
                       <div>
                         <h3 className="font-bold">{selectedAdminTicket.subject}</h3>
-                        <p className="text-xs text-muted-foreground">User ID: {selectedAdminTicket.user_id}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          From: {selectedAdminTicket.profiles?.full_name || 'User'} ({selectedAdminTicket.profiles?.email || selectedAdminTicket.user_id.slice(0, 8)})
+                        </p>
                       </div>
                       <div className="flex gap-2">
-                        <Select 
-                          value={selectedAdminTicket.status} 
+                        <Select
+                          value={selectedAdminTicket.status}
                           onValueChange={async (val) => {
                             await supabase.from("support_tickets").update({ status: val }).eq("id", selectedAdminTicket.id);
                             setTickets(prev => prev.map(t => t.id === selectedAdminTicket.id ? { ...t, status: val } : t));
@@ -1099,7 +1155,7 @@ export default function AdminDashboard() {
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                       {adminMessages.map((msg) => (
-                        <div 
+                        <div
                           key={msg.id}
                           className={cn(
                             "flex flex-col max-w-[85%]",
@@ -1108,8 +1164,8 @@ export default function AdminDashboard() {
                         >
                           <div className={cn(
                             "p-3 rounded-xl text-xs leading-relaxed",
-                            msg.is_admin_reply 
-                              ? "bg-primary text-primary-foreground rounded-tr-none" 
+                            msg.is_admin_reply
+                              ? "bg-primary text-primary-foreground rounded-tr-none"
                               : "bg-background border border-border rounded-tl-none"
                           )}>
                             {msg.message}
@@ -1123,7 +1179,7 @@ export default function AdminDashboard() {
 
                     <form onSubmit={handleSendAdminReply} className="p-4 bg-background/50 border-t border-border">
                       <div className="flex gap-2">
-                        <Input 
+                        <Input
                           placeholder="Type reply..."
                           className="text-xs h-10"
                           value={newAdminReply}
