@@ -186,6 +186,23 @@ const Support = () => {
     }
   };
 
+  const handleCloseTicket = async () => {
+    if (!selectedTicket) return;
+    
+    const { error } = await supabase
+      .from("support_tickets")
+      .update({ status: 'closed', updated_at: new Date().toISOString() })
+      .eq("id", selectedTicket.id);
+    
+    if (error) {
+      toast.error("Failed to close ticket");
+    } else {
+      toast.success("Ticket closed");
+      setTickets(prev => prev.map(t => t.id === selectedTicket.id ? { ...t, status: 'closed' } : t));
+      setSelectedTicket(prev => prev ? { ...prev, status: 'closed' } : null);
+    }
+  };
+
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTicketSubject.trim() || !newTicketMessage.trim()) return;
@@ -333,9 +350,16 @@ const Support = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
-                      Close Ticket
-                    </Button>
+                    {selectedTicket.status !== 'closed' && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                        onClick={handleCloseTicket}
+                      >
+                        Close Ticket
+                      </Button>
+                    )}
                   </div>
                 </div>
 
