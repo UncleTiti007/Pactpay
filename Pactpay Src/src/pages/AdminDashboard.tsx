@@ -14,7 +14,7 @@ import {
   Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
   Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical, 
   Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
-  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare
+  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare, MessageSquareText
 } from "lucide-react";
 import { 
   Select, 
@@ -1031,7 +1031,7 @@ export default function AdminDashboard() {
               <div className="lg:col-span-8 flex flex-col h-full bg-muted/10 rounded-xl overflow-hidden relative">
                 {!selectedAdminTicket ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
-                    <LifeBuoy className="h-16 w-16 mb-4" />
+                    <MessageSquareText className="h-16 w-16 mb-4" />
                     <p>Select a ticket to view conversation</p>
                   </div>
                 ) : (

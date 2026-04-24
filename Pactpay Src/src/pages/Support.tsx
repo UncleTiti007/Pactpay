@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Send, Plus, Search, 
   Clock, CheckCircle2, AlertCircle, ChevronRight,
-  LifeBuoy, ArrowLeft
+  LifeBuoy, ArrowLeft, MessageSquareText
 } from "lucide-react";
 import { cn, formatTimeAgo } from "@/lib/utils";
 
@@ -232,7 +232,7 @@ const Support = () => {
                 <div className="p-8 text-center text-muted-foreground">Loading tickets...</div>
               ) : tickets.length === 0 ? (
                 <div className="p-12 text-center flex flex-col items-center gap-4">
-                  <LifeBuoy className="h-12 w-12 text-muted-foreground/20" />
+                  <MessageSquareText className="h-12 w-12 text-muted-foreground/20" />
                   <p className="text-sm text-muted-foreground">No support tickets found</p>
                 </div>
               ) : (
