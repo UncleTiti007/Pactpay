@@ -144,7 +144,7 @@ const Support = () => {
     const msg = newMessage;
     setNewMessage("");
 
-    const { error } = await supabase
+    const { error: msgError } = await supabase
       .from("support_messages")
       .insert({
         ticket_id: selectedTicket.id,
@@ -153,15 +153,36 @@ const Support = () => {
         is_admin_reply: false
       });
 
-    if (error) {
+    if (msgError) {
       toast.error("Failed to send message");
       setNewMessage(msg);
     } else {
-      // Update ticket updated_at
+      // Update ticket updated_at and potentially status to 'open' if user replies
       await supabase
         .from("support_tickets")
-        .update({ updated_at: new Date().toISOString() })
+        .update({ 
+          updated_at: new Date().toISOString(),
+          status: 'open' // Re-open or mark as needing attention
+        })
         .eq("id", selectedTicket.id);
+
+      // Notify all admins
+      const { data: admins } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("is_admin", true);
+      
+      if (admins && admins.length > 0) {
+        const notifications = admins.map(admin => ({
+          user_id: admin.id,
+          title: "New Support Message",
+          message: `Update on ticket: ${selectedTicket.subject}`,
+          type: "system",
+          link: "/admin"
+        }));
+        
+        await supabase.from("notifications").insert(notifications);
+      }
     }
   };
 
