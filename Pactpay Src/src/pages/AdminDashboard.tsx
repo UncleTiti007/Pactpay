@@ -374,34 +374,34 @@ export default function AdminDashboard() {
               <p className="text-[10px] text-muted-foreground mt-2">Combined user wallet balances</p>
             </div>
 
-            <div className="glass-card p-5 border-amber-500/20 bg-amber-500/5 flex flex-col justify-between">
+            <div className="glass-card p-5 border-warning/20 bg-warning/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
                 <ShieldCheck className="h-3 w-3" /> Active Escrow Locked
               </span>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-amber-500">${activeEscrow.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-warning">${activeEscrow.toLocaleString()}</span>
                 <span className="text-[10px] text-muted-foreground">USD</span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">Total funds in active contracts</p>
             </div>
 
-            <div className="glass-card p-5 border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-between">
+            <div className="glass-card p-5 border-success/20 bg-success/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
                 <TrendingUp className="h-3 w-3" /> Net Platform Earnings
               </span>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-emerald-500">${netEarnings.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-success">${netEarnings.toLocaleString()}</span>
                 <span className="text-[10px] text-muted-foreground">Available</span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">Total fees collected (payouts deducted)</p>
             </div>
 
-            <div className="glass-card p-5 border-blue-500/20 bg-blue-500/5 flex flex-col justify-between">
+            <div className="glass-card p-5 border-status-active/20 bg-status-active/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
                 <Users className="h-3 w-3" /> Total Active Users
               </span>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-blue-500">{users.length.toLocaleString()}</span>
+                <span className="text-2xl font-bold text-status-active">{users.length.toLocaleString()}</span>
                 <span className="text-[10px] text-muted-foreground">Active</span>
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">Verified and pending users</p>
@@ -625,18 +625,18 @@ export default function AdminDashboard() {
                       <TableCell>{u.is_admin ? <Badge className="bg-primary">Admin</Badge> : <Badge variant="outline">User</Badge>}</TableCell>
                       <TableCell>
                         {u.kyc_verified === true
-                          ? <Badge className="bg-green-600/20 text-green-500 border-green-600/30">Verified</Badge>
+                          ? <Badge className="bg-success/20 text-success border-success/30">Verified</Badge>
                           : u.id_doc_front_url
-                            ? <Badge className="bg-amber-600/20 text-amber-500 border-amber-600/30">Pending</Badge>
+                            ? <Badge className="bg-warning/20 text-warning border-warning/30">Pending</Badge>
                             : <Badge variant="outline" className="text-muted-foreground">No KYC</Badge>
                         }
                       </TableCell>
                       <TableCell>
                         {u.account_status === 'deactivated' 
-                          ? <Badge className="bg-red-500/20 text-red-500 border-red-500/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> Deactivated</Badge>
+                          ? <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> Deactivated</Badge>
                           : u.account_status === 'locked'
-                            ? <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> Locked</Badge>
-                            : <Badge className="bg-emerald-500/20 text-emerald-500 border-emerald-500/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> Active</Badge>
+                            ? <Badge className="bg-warning/20 text-warning border-warning/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> Locked</Badge>
+                            : <Badge className="bg-success/20 text-success border-success/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> Active</Badge>
                         }
                       </TableCell>
                       <TableCell>${u.wallet_balance?.toLocaleString() || '0'}</TableCell>

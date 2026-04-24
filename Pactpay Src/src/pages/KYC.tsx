@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock, Calendar as CalendarIcon } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
+import PactpayLogo from "@/components/PactpayLogo";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria",
@@ -351,8 +352,8 @@ const KYC = () => {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="mb-8 text-center">
-          <div className="mb-2 flex h-10 w-10 mx-auto items-center justify-center rounded-xl bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">P</span>
+          <div className="flex justify-center mb-4">
+            <PactpayLogo size="lg" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">Identity Verification</h1>
           <p className="text-sm text-muted-foreground mt-1">Complete your KYC to start using Pactpay</p>

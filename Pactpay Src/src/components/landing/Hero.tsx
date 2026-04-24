@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Shield, ArrowRight } from "lucide-react";
+import PactpayLogo from "@/components/PactpayLogo";
 
 const Hero = () => {
   return (
@@ -17,9 +18,11 @@ const Hero = () => {
             Escrow-protected contracts for freelancers
           </div>
 
-          <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight text-foreground md:text-7xl">
-            Your work.{" "}
-            <span className="text-gradient">Protected.</span>
+          <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight text-foreground md:text-7xl flex flex-col items-center gap-4">
+            <div className="flex justify-center mb-4">
+              <PactpayLogo size="lg" />
+            </div>
+            <span>Your work. <span className="text-gradient">Protected.</span></span>
           </h1>
 
           <p className="mx-auto mb-10 max-w-xl text-lg leading-relaxed text-muted-foreground md:text-xl">

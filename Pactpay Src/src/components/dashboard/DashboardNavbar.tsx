@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Bell, BellDot, Plus, LogOut, User as UserIcon } from "lucide-react";
+import { Bell, BellDot, Plus, LogOut, User as UserIcon, Sun, Moon } from "lucide-react";
+import PactpayLogo from "@/components/PactpayLogo";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +21,22 @@ const DashboardNavbar = () => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isDark, setIsDark] = useState(true);
+
+  useEffect(() => {
+    // Initialize theme from localStorage or default to dark
+    const savedTheme = localStorage.getItem("theme");
+    const isDarkMode = savedTheme === null ? true : savedTheme === "dark";
+    setIsDark(isDarkMode);
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, []);
+
+  const toggleTheme = () => {
+    const newDark = !isDark;
+    setIsDark(newDark);
+    document.documentElement.classList.toggle("dark", newDark);
+    localStorage.setItem("theme", newDark ? "dark" : "light");
+  };
 
   useEffect(() => {
     if (user) {
@@ -94,13 +111,10 @@ const DashboardNavbar = () => {
   const initial = user?.user_metadata?.full_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 border-b border-primary/15 bg-white/80 dark:bg-background/80 backdrop-blur-xl transition-all">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link to="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-sm font-bold text-primary-foreground">P</span>
-          </div>
-          <span className="text-lg font-bold text-foreground">Pactpay</span>
+        <Link to="/dashboard">
+          <PactpayLogo size="md" />
         </Link>
 
         <div className="flex items-center gap-3">
@@ -163,6 +177,19 @@ const DashboardNavbar = () => {
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            className="h-9 w-9 rounded-full bg-card/50 ring-1 ring-border/50 transition-all hover:bg-card hover:ring-primary/30"
+          >
+            {isDark ? (
+              <Sun className="h-[1.1rem] w-[1.1rem] text-amber-500" />
+            ) : (
+              <Moon className="h-[1.1rem] w-[1.1rem] text-primary" />
+            )}
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

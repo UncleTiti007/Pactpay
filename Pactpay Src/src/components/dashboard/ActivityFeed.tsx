@@ -29,8 +29,6 @@ const getIconForType = (type: string) => {
       return { icon: Mail, color: "text-blue-500", bg: "bg-blue-500/10" };
     case "dispute":
       return { icon: AlertTriangle, color: "text-red-500", bg: "bg-red-500/10" };
-    case "kyc_rejected":
-      return { icon: ShieldCheck, color: "text-red-500", bg: "bg-red-500/10" };
     default:
       return { icon: Bell, color: "text-primary", bg: "bg-primary/10" };
   }
@@ -95,7 +93,7 @@ const ActivityFeed = () => {
           title = "Escrow Funded";
           message = `Contract funds ($${t.amount.toLocaleString()}) are now held securely in escrow.`;
         } else {
-          title = t.type.replace('_', ' ').toUpperCase();
+          title = t.type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
           message = `Transaction of $${t.amount.toLocaleString()} recorded.`;
         }
 
@@ -111,7 +109,15 @@ const ActivityFeed = () => {
 
       // 4. Merge and sort
       const merged = [
-        ...(notifications || []).map(n => ({ ...n, category: 'notification' })),
+        ...(notifications || []).map(n => {
+          // Derive a title if missing
+          let title = n.title;
+          if (!title) {
+            title = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            if (title === 'System') title = 'Notification';
+          }
+          return { ...n, title, category: 'notification' };
+        }),
         ...transActivities
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -166,10 +172,12 @@ const ActivityFeed = () => {
                       <Icon className={`h-4 w-4 ${color}`} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      {item.title && (
-                        <p className="text-sm font-bold text-foreground leading-none mb-1">{item.title}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground leading-tight">{item.message}</p>
+                      <p className="text-sm font-semibold text-foreground leading-snug mb-0.5">
+                        {item.title}
+                      </p>
+                      <p className="text-[13px] text-muted-foreground leading-snug">
+                        {item.message}
+                      </p>
                       <p className="mt-1 text-[10px] items-center flex gap-1 text-muted-foreground/50 font-medium">
                         <span className="capitalize">{item.category}</span>
                         <span>•</span>

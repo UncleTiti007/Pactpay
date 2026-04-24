@@ -47,16 +47,19 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       label: "Ongoing Projects",
       value: activeContracts.toString(),
       icon: FileText,
+      tint: "bg-blue-500/[0.04] dark:bg-card-elevated"
     },
     {
       label: "Total Earned",
       value: `$${totalEarned.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
       icon: TrendingUp,
+      tint: "bg-emerald-500/[0.04] dark:bg-card-elevated"
     },
     {
       label: "Pending Approval",
       value: pendingApproval.toString(),
       icon: Clock,
+      tint: "bg-amber-500/[0.04] dark:bg-card-elevated"
     },
   ];
 
@@ -65,10 +68,10 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className={`relative overflow-hidden rounded-xl border p-5 ${
+          className={`relative overflow-hidden rounded-xl border p-5 border-l-[3px] border-l-primary/60 transition-all hover:scale-[1.01] ${
             stat.accent
-              ? "border-primary/20 bg-card-elevated"
-              : "border-border/50 bg-card-elevated"
+              ? "border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-primary/[0.02] dark:from-card-elevated dark:to-card-elevated"
+              : `border-border/60 ${stat.tint || 'bg-card-elevated'}`
           }`}
         >
           {stat.accent && (

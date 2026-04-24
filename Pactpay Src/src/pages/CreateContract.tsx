@@ -230,21 +230,22 @@ const CreateContract = () => {
               <div className="glass-card space-y-5 p-6">
                 <h2 className="text-lg font-semibold text-foreground">Contract Basics</h2>
                 <div>
-                  <Label htmlFor="title">Contract title</Label>
-                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" />
+                  <Label htmlFor="title">Contract title <span className="text-destructive">*</span></Label>
+                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" required />
                 </div>
                 <div>
-                  <Label htmlFor="description">Scope of work</Label>
+                  <Label htmlFor="description">Scope of work <span className="text-destructive">*</span></Label>
                   <Textarea
                     id="description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe the project in detail..."
                     rows={5}
+                    required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="contractTotal">Contract total (USD)</Label>
+                  <Label htmlFor="contractTotal">Contract total (USD) <span className="text-destructive">*</span></Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                     <Input
@@ -254,6 +255,7 @@ const CreateContract = () => {
                       value={contractTotal}
                       onChange={(e) => setContractTotal(e.target.value)}
                       placeholder="5000"
+                      required
                     />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">Used to calculate percentage-based milestones</p>
@@ -272,7 +274,7 @@ const CreateContract = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="freelancerEmail">Freelancer</Label>
+                  <Label htmlFor="freelancerEmail">Freelancer <span className="text-destructive">*</span></Label>
                   <UserSearch
                     onSelect={(selectedUser) => {
                       if (selectedUser) {

@@ -6,52 +6,101 @@
 
 @layer base {
   :root {
-    --background: 215 40% 12%;
-    --foreground: 0 0% 100%;
+    /* Light Mode - Premium Fintech Style */
+    --background: 210 40% 98%; /* #F0F4F8 fallback */
+    --foreground: 215 60% 10%; /* #0A1628 */
 
-    --card: 215 35% 15%;
-    --card-foreground: 0 0% 100%;
-    --card-elevated: 213 38% 17%;
+    --card: 0 0% 100%; 
+    --card-foreground: 215 60% 10%; /* #0A1628 */
+    --card-elevated: 0 0% 100%;
 
-    --popover: 215 35% 15%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 60% 10%;
 
-    --primary: 155 100% 38%;
-    --primary-foreground: 215 40% 12%;
+    --primary: 158 100% 30%; /* #009960 - Deeper Primary */
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 215 30% 20%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 215 30% 40%; /* #4A6080 */
+    --secondary-foreground: 215 60% 10%;
 
-    --muted: 215 25% 22%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 30% 40%; /* #4A6080 */
 
-    --accent: 155 100% 38%;
-    --accent-foreground: 215 40% 12%;
+    --accent: 158 100% 30%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 215 25% 25%;
-    --input: 215 25% 25%;
-    --ring: 155 100% 38%;
+    --border: 158 50% 90%; /* Subtle green tint for light borders */
+    --input: 158 50% 90%;
+    --ring: 158 100% 30%;
 
     --radius: 0.75rem;
 
     --status-draft: 215 20% 50%;
-    --status-pending: 38 92% 50%;
+    --status-pending: 36 100% 44%;
     --status-active: 217 91% 60%;
-    --status-completed: 155 100% 38%;
+    --status-completed: 161 94% 30%;
+    --status-disputed: 0 72% 51%;
+    --status-cancelled: 215 20% 50%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 60% 10%;
+    --sidebar-primary: 158 100% 30%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 158 50% 90%;
+    --sidebar-accent-foreground: 215 60% 10%;
+    --sidebar-border: 158 50% 90%;
+    --sidebar-ring: 158 100% 30%;
+  }
+
+  .dark {
+    /* Dark Mode (Requested Default) */
+    --background: 216 53% 7%; /* #080F1A */
+    --foreground: 216 100% 97%; /* #F0F6FF */
+
+    --card: 216 42% 15%; /* #162236 */
+    --card-foreground: 216 100% 97%; /* #F0F6FF */
+    --card-elevated: 216 50% 12%; /* #0F1B2D */
+
+    --popover: 216 50% 12%; /* #0F1B2D */
+    --popover-foreground: 216 100% 97%; /* #F0F6FF */
+
+    --primary: 158 100% 41.5%; /* #00D485 */
+    --primary-foreground: 216 53% 7%; /* #080F1A */
+
+    --secondary: 215 51% 21%; /* #1a3050 */
+    --secondary-foreground: 211 40% 62%; /* #7A9CC0 */
+
+    --muted: 215 51% 21%; /* #1a3050 */
+    --muted-foreground: 211 40% 62%; /* #7A9CC0 */
+
+    --accent: 158 100% 41.5%; /* #00D485 */
+    --accent-foreground: 216 53% 7%; /* #080F1A */
+
+    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive-foreground: 216 100% 97%;
+
+    --border: 215 51% 21%; /* #1a3050 */
+    --input: 215 51% 21%;
+    --ring: 158 100% 41.5%;
+
+    --status-draft: 215 20% 50%;
+    --status-pending: 38 92% 50%; /* #F59E0B */
+    --status-active: 217 91% 60%;
+    --status-completed: 161 64% 39%; /* #10B981 */
     --status-disputed: 0 84% 60%;
     --status-cancelled: 215 20% 50%;
 
-    --sidebar-background: 215 35% 15%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 155 100% 38%;
-    --sidebar-primary-foreground: 215 40% 12%;
-    --sidebar-accent: 215 30% 20%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 215 25% 25%;
-    --sidebar-ring: 155 100% 38%;
+    --sidebar-background: 216 50% 12%;
+    --sidebar-foreground: 216 100% 97%;
+    --sidebar-primary: 158 100% 41.5%;
+    --sidebar-primary-foreground: 216 53% 7%;
+    --sidebar-accent: 215 51% 21%;
+    --sidebar-accent-foreground: 216 100% 97%;
+    --sidebar-border: 215 51% 21%;
+    --sidebar-ring: 158 100% 41.5%;
   }
 }
 
@@ -61,13 +110,24 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply text-foreground font-sans antialiased;
+    background: linear-gradient(135deg, #EEF2FF 0%, #F0F7FF 50%, #E8F5F0 100%) fixed;
+  }
+
+  .dark body {
+    background: hsl(var(--background));
   }
 }
 
 @layer utilities {
   .glass-card {
-    @apply bg-card/50 backdrop-blur-xl border border-border/50 rounded-xl;
+    @apply bg-card/85 backdrop-blur-[10px] border border-primary/10 rounded-xl transition-all;
+    box-shadow: 0 2px 12px rgba(0, 194, 124, 0.06), 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .dark .glass-card {
+    @apply bg-card/50 backdrop-blur-xl border border-border/50;
+    box-shadow: none;
   }
 
   .glow-primary {
