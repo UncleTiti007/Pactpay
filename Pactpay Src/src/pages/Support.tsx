@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Send, Plus, Search, 
   Clock, CheckCircle2, AlertCircle, ChevronRight,
-  LifeBuoy, ArrowLeft, MessageSquareText
+  LifeBuoy, ArrowLeft, MessageSquareText, Activity
 } from "lucide-react";
 import { cn, formatTimeAgo } from "@/lib/utils";
 
@@ -182,9 +182,10 @@ const Support = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'open': return <Clock className="h-4 w-4 text-blue-500" />;
-      case 'pending': return <AlertCircle className="h-4 w-4 text-amber-500" />;
+      case 'in progress': return <Activity className="h-4 w-4 text-indigo-400" />;
+      case 'pending user': return <AlertCircle className="h-4 w-4 text-amber-500" />;
       case 'resolved': return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
-      default: return <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
+      default: return <Clock className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -276,10 +277,12 @@ const Support = () => {
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
                         selectedTicket.status === 'open' ? "bg-blue-500/10 text-blue-500" :
+                        selectedTicket.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400" :
+                        selectedTicket.status === 'pending user' ? "bg-amber-500/20 text-amber-500" :
                         selectedTicket.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500" :
                         "bg-muted text-muted-foreground"
                       )}>
-                        {selectedTicket.status}
+                        {selectedTicket.status.replace("_", " ")}
                       </span>
                       <span>Ticket #{selectedTicket.id.slice(0, 8)}</span>
                     </div>

@@ -159,7 +159,7 @@ export default function AdminDashboard() {
     });
 
     await supabase.from("support_tickets").update({ 
-      status: 'pending', 
+      status: 'pending user', 
       updated_at: new Date().toISOString() 
     }).eq("id", selectedAdminTicket.id);
     
@@ -1009,10 +1009,12 @@ export default function AdminDashboard() {
                           <Badge variant="outline" className={cn(
                             "text-[10px] px-1.5 py-0 capitalize",
                             t.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
-                            t.status === 'pending' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
-                            "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            t.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-bold" :
+                            t.status === 'pending user' ? "bg-amber-500/20 text-amber-500 border-amber-500/30" :
+                            t.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                            "bg-muted text-muted-foreground border-border/50"
                           )}>
-                            {t.status}
+                            {t.status.replace("pending user", "Pending User")}
                           </Badge>
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium truncate mb-1">
@@ -1055,8 +1057,9 @@ export default function AdminDashboard() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="open">Open</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="open">Open (New)</SelectItem>
+                            <SelectItem value="in progress">In Progress</SelectItem>
+                            <SelectItem value="pending user">Pending User Reply</SelectItem>
                             <SelectItem value="resolved">Resolved</SelectItem>
                             <SelectItem value="closed">Closed</SelectItem>
                           </SelectContent>
