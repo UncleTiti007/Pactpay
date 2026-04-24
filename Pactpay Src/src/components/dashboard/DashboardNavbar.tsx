@@ -47,25 +47,34 @@ const DashboardNavbar = () => {
       fetchNotifications();
       
       const channel = supabase
-        .channel('schema-db-changes')
+      // Optimized Real-time notification listener
+      const channel = supabase
+        .channel(`user-notifications-${user.id}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`
+            table: 'notifications'
           },
           (payload) => {
-            console.log("Real-time notification received:", payload.new);
-            setNotifications(prev => [payload.new, ...prev].slice(0, 5));
-            setUnreadCount(prev => prev + 1);
-            toast.info(payload.new.title, {
-              description: payload.new.message,
-            });
+            // Filter locally to ensure UUID matching works perfectly
+            if (payload.new.user_id === user.id) {
+              console.log("🔔 Notification received!", payload.new);
+              setNotifications(prev => [payload.new, ...prev].slice(0, 5));
+              setUnreadCount(prev => prev + 1);
+              
+              // Premium Toast Alert
+              toast.info(payload.new.title, {
+                description: payload.new.message,
+                icon: <Bell className="h-4 w-4" />
+              });
+            }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log(`📡 Notification channel status for ${user.email}:`, status);
+        });
 
       return () => {
         supabase.removeChannel(channel);
