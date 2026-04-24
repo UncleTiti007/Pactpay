@@ -113,6 +113,9 @@ export default function AdminDashboard() {
     setDisputes(dRes.data || []);
     setTransactions(tRes.data || []);
     setTickets(tickRes.data || []);
+    if (tickRes.data && tickRes.data.length > 0 && !selectedAdminTicket) {
+      setSelectedAdminTicket(tickRes.data[0]);
+    }
     setLoading(false);
   };
 
