@@ -49,8 +49,32 @@ const Support = () => {
   useEffect(() => {
     if (user) {
       fetchTickets();
+
+      // Listen for ticket updates (status changes, etc)
+      const ticketChannel = supabase
+        .channel('global-tickets')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'support_tickets' },
+          (payload) => {
+            if (payload.eventType === 'UPDATE') {
+              setTickets(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+              if (selectedTicket?.id === payload.new.id) {
+                // Also update the currently viewed ticket's status
+                setSelectedTicket(prev => prev ? { ...prev, ...payload.new } : null);
+              }
+            } else if (payload.eventType === 'INSERT') {
+              setTickets(prev => [payload.new as Ticket, ...prev]);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(ticketChannel);
+      };
     }
-  }, [user]);
+  }, [user, selectedTicket?.id]);
 
   useEffect(() => {
     if (selectedTicket) {

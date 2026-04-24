@@ -125,6 +125,32 @@ export default function AdminDashboard() {
     setAdminMessages(data || []);
   };
 
+  // Global Realtime listener for tickets
+  useEffect(() => {
+    if (isAdmin) {
+      const ticketChannel = supabase
+        .channel('global-admin-tickets')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'support_tickets' 
+        }, (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            setTickets(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+            if (selectedAdminTicket?.id === payload.new.id) {
+              setSelectedAdminTicket(prev => prev ? { ...prev, ...payload.new } : null);
+            }
+          } else if (payload.eventType === 'INSERT') {
+            // Re-fetch all data or just append if complicated join
+            fetchAllData(); 
+          }
+        })
+        .subscribe();
+      
+      return () => { supabase.removeChannel(ticketChannel); };
+    }
+  }, [isAdmin, selectedAdminTicket?.id]);
+
   useEffect(() => {
     if (selectedAdminTicket) {
       fetchAdminMessages(selectedAdminTicket.id);
