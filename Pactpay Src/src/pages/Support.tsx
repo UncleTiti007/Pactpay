@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import DashboardNavbar from "@/components/dashboard/DashboardNavbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +11,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Send, Plus, Search, 
   Clock, CheckCircle2, AlertCircle, ChevronRight,
-  LifeBuoy
+  LifeBuoy, ArrowLeft
 } from "lucide-react";
 import { cn, formatTimeAgo } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ interface Ticket {
 
 const Support = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -192,9 +194,17 @@ const Support = () => {
       
       <div className="container mx-auto px-4 pt-8">
         <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Support Center</h1>
-            <p className="text-muted-foreground">Get help with your contracts and account</p>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate("/dashboard")}
+              className="group flex h-10 w-10 items-center justify-center rounded-full bg-card border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all shadow-sm"
+            >
+              <ArrowLeft className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Support Center</h1>
+              <p className="text-sm text-muted-foreground">Get help with your contracts and account</p>
+            </div>
           </div>
           <Button 
             onClick={() => setIsNewTicketModalOpen(true)}

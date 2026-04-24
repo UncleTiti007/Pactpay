@@ -9,7 +9,7 @@ import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import TopUpModal from "@/components/dashboard/TopUpModal";
 import WithdrawModal from "@/components/dashboard/WithdrawModal";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, LifeBuoy } from "lucide-react";
+import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockedDashboardOverlay from "@/components/dashboard/LockedDashboardOverlay";
 
@@ -347,7 +347,7 @@ const Dashboard = () => {
         className="fixed bottom-6 left-6 flex h-14 w-14 items-center justify-center rounded-full bg-card border border-border shadow-2xl transition-all hover:scale-110 hover:shadow-primary/20 group z-50 overflow-hidden"
       >
         <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-        <LifeBuoy className="h-6 w-6 text-primary" />
+        <MessageSquareText className="h-6 w-6 text-primary" />
         <span className="absolute left-16 bg-card border border-border px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all shadow-xl">
           Help & Support
         </span>
