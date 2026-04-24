@@ -14,7 +14,7 @@ import {
   Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle, 
   Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical, 
   Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
-  DollarSign, TrendingUp
+  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare
 } from "lucide-react";
 import { 
   Select, 
@@ -66,6 +66,10 @@ export default function AdminDashboard() {
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [activeTab, setActiveTab] = useState("disputes");
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [selectedAdminTicket, setSelectedAdminTicket] = useState<any>(null);
+  const [adminMessages, setAdminMessages] = useState<any[]>([]);
+  const [newAdminReply, setNewAdminReply] = useState("");
 
   useEffect(() => {
     if (!authLoading) {
@@ -96,17 +100,77 @@ export default function AdminDashboard() {
 
   const fetchAllData = async () => {
     setLoading(true);
-    const [cRes, uRes, dRes, tRes] = await Promise.all([
+    const [cRes, uRes, dRes, tRes, tickRes] = await Promise.all([
       supabase.from("contracts").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("disputes").select("*, contracts(title), milestones(name, amount)").order("created_at", { ascending: false }),
-      supabase.from("transactions").select("*").order("created_at", { ascending: false })
+      supabase.from("transactions").select("*").order("created_at", { ascending: false }),
+      supabase.from("support_tickets").select("*, profiles(full_name, email)").order("updated_at", { ascending: false })
     ]);
     setContracts(cRes.data || []);
     setUsers(uRes.data || []);
     setDisputes(dRes.data || []);
     setTransactions(tRes.data || []);
+    setTickets(tickRes.data || []);
     setLoading(false);
+  };
+
+  const fetchAdminMessages = async (ticketId: string) => {
+    const { data } = await supabase
+      .from("support_messages")
+      .select("*")
+      .eq("ticket_id", ticketId)
+      .order("created_at", { ascending: true });
+    setAdminMessages(data || []);
+  };
+
+  useEffect(() => {
+    if (selectedAdminTicket) {
+      fetchAdminMessages(selectedAdminTicket.id);
+      
+      const channel = supabase
+        .channel(`admin-ticket-${selectedAdminTicket.id}`)
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'support_messages', 
+          filter: `ticket_id=eq.${selectedAdminTicket.id}` 
+        }, (payload) => {
+          setAdminMessages(prev => [...prev, payload.new]);
+        })
+        .subscribe();
+      
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [selectedAdminTicket]);
+
+  const handleSendAdminReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminReply.trim() || !selectedAdminTicket) return;
+
+    const msg = newAdminReply;
+    setNewAdminReply("");
+
+    await supabase.from("support_messages").insert({
+      ticket_id: selectedAdminTicket.id,
+      sender_id: user!.id,
+      message: msg,
+      is_admin_reply: true
+    });
+
+    await supabase.from("support_tickets").update({ 
+      status: 'pending', 
+      updated_at: new Date().toISOString() 
+    }).eq("id", selectedAdminTicket.id);
+    
+    // Also send a system notification to the user
+    await supabase.from("notifications").insert({
+      user_id: selectedAdminTicket.user_id,
+      title: "Support Update",
+      message: "You have a new reply from Pactpay Support",
+      type: "system",
+      link: "/support"
+    });
   };
 
   const handleResolveDispute = async (disputeId: string, resolution: "release" | "refund") => {
@@ -415,6 +479,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="contracts">Contracts ({contracts.length})</TabsTrigger>
             <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
             <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
+            <TabsTrigger value="support">Support ({tickets.filter(t => t.status === 'open').length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="disputes" className="glass-card p-6">
@@ -915,6 +980,130 @@ export default function AdminDashboard() {
                   })()}
                 </TableBody>
               </Table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="support" className="glass-card p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
+              {/* Tickets List */}
+              <div className="lg:col-span-4 border-r border-border/50 pr-4 flex flex-col">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold mb-1">Support Tickets</h2>
+                  <p className="text-xs text-muted-foreground">Manage user inquiries and issues</p>
+                </div>
+                <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
+                  {tickets.length === 0 ? (
+                    <div className="py-20 text-center text-muted-foreground italic text-sm">No tickets found</div>
+                  ) : (
+                    tickets.map((t) => (
+                      <div 
+                        key={t.id}
+                        onClick={() => setSelectedAdminTicket(t)}
+                        className={cn(
+                          "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
+                          selectedAdminTicket?.id === t.id ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20" : ""
+                        )}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-sm font-bold truncate pr-2">{t.subject}</span>
+                          <Badge variant="outline" className={cn(
+                            "text-[10px] px-1.5 py-0 capitalize",
+                            t.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                            t.status === 'pending' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                            "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                          )}>
+                            {t.status}
+                          </Badge>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground font-medium truncate mb-1">
+                          From: {t.profiles?.full_name || t.user_id.slice(0,8)} ({t.profiles?.email})
+                        </div>
+                        <div className="text-[10px] text-muted-foreground/60 text-right">
+                          {new Date(t.updated_at).toLocaleString()}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Chat View */}
+              <div className="lg:col-span-8 flex flex-col h-full bg-muted/10 rounded-xl overflow-hidden relative">
+                {!selectedAdminTicket ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
+                    <LifeBuoy className="h-16 w-16 mb-4" />
+                    <p>Select a ticket to view conversation</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-4 bg-background/50 border-b border-border flex justify-between items-center">
+                      <div>
+                        <h3 className="font-bold">{selectedAdminTicket.subject}</h3>
+                        <p className="text-xs text-muted-foreground">User ID: {selectedAdminTicket.user_id}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Select 
+                          value={selectedAdminTicket.status} 
+                          onValueChange={async (val) => {
+                            await supabase.from("support_tickets").update({ status: val }).eq("id", selectedAdminTicket.id);
+                            setTickets(prev => prev.map(t => t.id === selectedAdminTicket.id ? { ...t, status: val } : t));
+                            setSelectedAdminTicket({ ...selectedAdminTicket, status: val });
+                            toast.success(`Ticket status updated to ${val}`);
+                          }}
+                        >
+                          <SelectTrigger className="w-[120px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                      {adminMessages.map((msg) => (
+                        <div 
+                          key={msg.id}
+                          className={cn(
+                            "flex flex-col max-w-[85%]",
+                            msg.is_admin_reply ? "ml-auto items-end" : "mr-auto items-start"
+                          )}
+                        >
+                          <div className={cn(
+                            "p-3 rounded-xl text-xs leading-relaxed",
+                            msg.is_admin_reply 
+                              ? "bg-primary text-primary-foreground rounded-tr-none" 
+                              : "bg-background border border-border rounded-tl-none"
+                          )}>
+                            {msg.message}
+                          </div>
+                          <span className="text-[9px] text-muted-foreground mt-1">
+                            {new Date(msg.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form onSubmit={handleSendAdminReply} className="p-4 bg-background/50 border-t border-border">
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="Type reply..."
+                          className="text-xs h-10"
+                          value={newAdminReply}
+                          onChange={(e) => setNewAdminReply(e.target.value)}
+                        />
+                        <Button type="submit" size="icon" className="h-10 w-10 shrink-0">
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </form>
+                  </>
+                )}
+              </div>
             </div>
           </TabsContent>
         </Tabs>

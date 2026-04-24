@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound";
 import KYC from "./pages/KYC";
 import Profile from "./pages/Profile";
 import Transactions from "./pages/Transactions";
+import Support from "./pages/Support";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ const AppContent = () => {
       <Route path="/kyc" element={<KYC />} />
       <Route path="/profile" element={<Profile />} />
       <Route path="/transactions" element={<Transactions />} />
+      <Route path="/support" element={<Support />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
