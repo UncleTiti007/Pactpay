@@ -8,10 +8,11 @@ interface StatsBarProps {
   pendingApproval: number;
   onTopUp?: () => void;
   onWithdraw?: () => void;
+  onPendingApprovalClick?: () => void;
   disabled?: boolean;
 }
 
-const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval, onTopUp, onWithdraw, disabled }: StatsBarProps) => {
+const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval, onTopUp, onWithdraw, onPendingApprovalClick, disabled }: StatsBarProps) => {
   const stats = [
     {
       label: "Wallet Balance",
@@ -59,7 +60,8 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       label: "Pending Approval",
       value: pendingApproval.toString(),
       icon: Clock,
-      tint: "bg-amber-500/[0.04] dark:bg-card-elevated"
+      tint: "bg-amber-500/[0.04] dark:bg-card-elevated",
+      onClick: onPendingApprovalClick
     },
   ];
 
@@ -68,7 +70,10 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       {stats.map((stat) => (
         <div
           key={stat.label}
+          onClick={stat.onClick}
           className={`relative overflow-hidden rounded-xl border p-5 border-l-[3px] border-l-primary/60 transition-all hover:scale-[1.01] ${
+            stat.onClick ? "cursor-pointer hover:border-primary/40" : ""
+          } ${
             stat.accent
               ? "border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-primary/[0.02] dark:from-card-elevated dark:to-card-elevated"
               : `border-border/60 ${stat.tint || 'bg-card-elevated'}`

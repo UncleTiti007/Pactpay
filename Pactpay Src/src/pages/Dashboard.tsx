@@ -8,6 +8,7 @@ import StatsBar from "@/components/dashboard/StatsBar";
 import ActivityFeed from "@/components/dashboard/ActivityFeed";
 import TopUpModal from "@/components/dashboard/TopUpModal";
 import WithdrawModal from "@/components/dashboard/WithdrawModal";
+import PendingApprovalsModal from "@/components/dashboard/PendingApprovalsModal";
 import { Button } from "@/components/ui/button";
 import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +35,8 @@ const Dashboard = () => {
   const [walletBalance, setWalletBalance] = useState(0);
   const [totalEarned, setTotalEarned] = useState(0);
   const [pendingApproval, setPendingApproval] = useState(0);
+  const [pendingMilestones, setPendingMilestones] = useState<any[]>([]);
+  const [isPendingApprovalsModalOpen, setIsPendingApprovalsModalOpen] = useState(false);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [kycVerified, setKycVerified] = useState(true);
@@ -132,13 +135,14 @@ const Dashboard = () => {
       setTotalEarned(earned);
 
       // Pending action count - milestones in review where user is either client or freelancer
-      const { count } = await supabase
+      const { data: milestonesInReview, count } = await supabase
         .from("milestones")
-        .select("id, contracts!inner(client_id, freelancer_id)", { count: "exact" })
+        .select("id, title, amount, contract_id, contracts!inner(title, client_id, freelancer_id)", { count: "exact" })
         .eq("status", "in_review")
         .or(`client_id.eq.${user.id},freelancer_id.eq.${user.id}`, { foreignTable: "contracts" });
       
       setPendingApproval(count || 0);
+      setPendingMilestones(milestonesInReview || []);
     } catch (err) {
       console.error("Critical error in fetchContracts:", err);
     } finally {
@@ -248,6 +252,7 @@ const Dashboard = () => {
             pendingApproval={pendingApproval}
             onTopUp={() => setIsTopUpOpen(true)}
             onWithdraw={() => setIsWithdrawOpen(true)}
+            onPendingApprovalClick={() => setIsPendingApprovalsModalOpen(true)}
             disabled={isPendingApproval}
           />
         </div>
@@ -451,6 +456,12 @@ const Dashboard = () => {
         onSuccess={() => {
           window.location.reload();
         }}
+      />
+
+      <PendingApprovalsModal
+        isOpen={isPendingApprovalsModalOpen}
+        onClose={() => setIsPendingApprovalsModalOpen(false)}
+        milestones={pendingMilestones}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle, Send } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -81,6 +81,14 @@ const ContractDetail = () => {
   const [showContractRevisionDialog, setShowContractRevisionDialog] = useState(false);
   const [contractRevisionNote, setContractRevisionNote] = useState("");
   const [submittingContractRevision, setSubmittingContractRevision] = useState(false);
+  const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
+  const [newDisputeMessage, setNewDisputeMessage] = useState("");
+  const [dispute, setDispute] = useState<any>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [disputeMessages]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -178,7 +186,68 @@ const ContractDetail = () => {
       });
       setMilestoneHistory(groupedHistory);
     }
+
+    if (c.status === 'disputed') {
+      const { data: dData } = await supabase
+        .from("disputes")
+        .select("*")
+        .eq("contract_id", id)
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      
+      if (dData?.[0]) {
+        setDispute(dData[0]);
+        fetchDisputeMessages(dData[0].id);
+      }
+    }
   };
+
+  const fetchDisputeMessages = async (disputeId: string) => {
+    const { data } = await supabase
+      .from("dispute_messages")
+      .select("*, profiles(full_name)")
+      .eq("dispute_id", disputeId)
+      .order("created_at", { ascending: true });
+    setDisputeMessages(data || []);
+  };
+
+  const handleSendDisputeMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDisputeMessage.trim() || !dispute) return;
+
+    const msg = newDisputeMessage;
+    setNewDisputeMessage("");
+
+    const { error } = await supabase.from("dispute_messages").insert({
+      dispute_id: dispute.id,
+      user_id: user?.id,
+      message: msg
+    });
+
+    if (error) {
+      toast.error("Failed to send message: " + error.message);
+    }
+  };
+
+  // Realtime listener for dispute messages
+  useEffect(() => {
+    if (dispute?.id) {
+      const channel = supabase
+        .channel(`dispute-${dispute.id}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'dispute_messages',
+          filter: `dispute_id=eq.${dispute.id}`
+        }, (payload) => {
+          fetchDisputeMessages(dispute.id);
+        })
+        .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [dispute?.id]);
 
   const isClient = user?.id === contract?.client_id;
   const isFreelancer = user?.id === contract?.freelancer_id;
@@ -1020,6 +1089,81 @@ const ContractDetail = () => {
               <div className="glass-card p-5">
                 <h3 className="mb-2 text-sm font-medium text-muted-foreground">Scope of Work</h3>
                 <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{contract.description}</p>
+              </div>
+            )}
+
+            {contract.status === "disputed" && dispute && (
+              <div className="glass-card p-6 border-destructive/30 bg-destructive/5 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-destructive/20 p-2 rounded-lg">
+                      <ShieldAlert className="h-5 w-5 text-destructive" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-foreground">Dispute Resolution Center</h3>
+                      <p className="text-xs text-muted-foreground">Admin is reviewing this contract. Communicate below.</p>
+                    </div>
+                  </div>
+                  <Badge variant="destructive" className="animate-pulse">Active Dispute</Badge>
+                </div>
+
+                <div className="bg-background/40 rounded-xl border border-border overflow-hidden flex flex-col h-[400px]">
+                   <div className="p-3 bg-muted/30 border-b border-border">
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase">Dispute Reason</p>
+                      <p className="text-sm italic mt-1">"{dispute.reason}"</p>
+                   </div>
+
+                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                      {disputeMessages.length === 0 ? (
+                        <div className="py-12 text-center opacity-50">
+                           <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                           <p className="text-sm">No messages yet. Drop a message to the admin.</p>
+                        </div>
+                      ) : (
+                        disputeMessages.map((msg) => {
+                          const isMe = msg.user_id === user?.id;
+                          const isAdminReply = msg.is_admin_reply;
+                          
+                          return (
+                            <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+                              <div className="flex items-center gap-1.5 mb-1 px-1">
+                                <span className={cn("text-[10px] font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
+                                  {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                </span>
+                                <span className="text-[9px] text-muted-foreground/50">
+                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <div className={cn(
+                                "max-w-[85%] rounded-2xl px-4 py-2 text-sm",
+                                isMe ? "bg-primary text-white rounded-tr-none" : 
+                                isAdminReply ? "bg-amber-500/10 text-foreground border border-amber-500/20 rounded-tl-none" :
+                                "bg-card text-foreground border border-border rounded-tl-none"
+                              )}>
+                                {msg.message}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      <div ref={messagesEndRef} />
+                   </div>
+
+                   <form onSubmit={handleSendDisputeMessage} className="p-3 bg-background border-t border-border flex gap-2">
+                      <Input 
+                        placeholder="Type a message to the admin..." 
+                        className="flex-1 h-9 text-sm"
+                        value={newDisputeMessage}
+                        onChange={(e) => setNewDisputeMessage(e.target.value)}
+                      />
+                      <Button type="submit" size="icon" className="h-9 w-9" disabled={!newDisputeMessage.trim()}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                   </form>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-3 text-center italic">
+                   This conversation is visible to the Client, Freelancer, and Pactpay Administration.
+                </p>
               </div>
             )}
 

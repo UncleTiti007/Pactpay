@@ -74,6 +74,9 @@ export default function AdminDashboard() {
   const [selectedAdminTicket, setSelectedAdminTicket] = useState<any>(null);
   const [adminMessages, setAdminMessages] = useState<any[]>([]);
   const [newAdminReply, setNewAdminReply] = useState("");
+  const [selectedAdminDispute, setSelectedAdminDispute] = useState<any>(null);
+  const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
+  const [newDisputeReply, setNewDisputeReply] = useState("");
 
   useEffect(() => {
     if (!authLoading) {
@@ -147,6 +150,15 @@ export default function AdminDashboard() {
     setAdminMessages(data || []);
   };
 
+  const fetchDisputeMessages = async (disputeId: string) => {
+    const { data } = await supabase
+      .from("dispute_messages")
+      .select("*, profiles(full_name)")
+      .eq("dispute_id", disputeId)
+      .order("created_at", { ascending: true });
+    setDisputeMessages(data || []);
+  };
+
   // Global Realtime listener for tickets
   useEffect(() => {
     if (isAdmin) {
@@ -157,17 +169,23 @@ export default function AdminDashboard() {
           schema: 'public',
           table: 'support_tickets'
         }, (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            // Re-fetch to get the profile association which isn't in the raw payload
-            fetchAllData();
-          } else if (payload.eventType === 'INSERT') {
-            // Re-fetch all data or just append if complicated join
-            fetchAllData();
-          }
+          fetchAllData();
         })
         .subscribe();
 
-      return () => { supabase.removeChannel(ticketChannel); };
+      const disputeChannel = supabase
+        .channel('global-admin-disputes')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'disputes'
+        }, () => fetchAllData())
+        .subscribe();
+
+      return () => { 
+        supabase.removeChannel(ticketChannel);
+        supabase.removeChannel(disputeChannel);
+      };
     }
   }, [isAdmin, selectedAdminTicket?.id]);
 
@@ -191,6 +209,24 @@ export default function AdminDashboard() {
     }
   }, [selectedAdminTicket]);
 
+  useEffect(() => {
+    if (selectedAdminDispute) {
+      fetchDisputeMessages(selectedAdminDispute.id);
+
+      const channel = supabase
+        .channel(`admin-dispute-${selectedAdminDispute.id}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'dispute_messages',
+          filter: `dispute_id=eq.${selectedAdminDispute.id}`
+        }, () => fetchDisputeMessages(selectedAdminDispute.id))
+        .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [selectedAdminDispute]);
+
   const handleSendAdminReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAdminReply.trim() || !selectedAdminTicket) return;
@@ -205,6 +241,7 @@ export default function AdminDashboard() {
       is_admin_reply: true
     });
 
+    // Update ticket status
     await supabase.from("support_tickets").update({
       status: 'pending user',
       updated_at: new Date().toISOString()
@@ -217,6 +254,21 @@ export default function AdminDashboard() {
       message: "You have a new reply from Pactpay Support",
       type: "system",
       link: "/support"
+    });
+  };
+
+  const handleSendDisputeReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDisputeReply.trim() || !selectedAdminDispute) return;
+
+    const msg = newDisputeReply;
+    setNewDisputeReply("");
+
+    await supabase.from("dispute_messages").insert({
+      dispute_id: selectedAdminDispute.id,
+      user_id: user?.id,
+      message: msg,
+      is_admin_reply: true
     });
   };
 
@@ -527,85 +579,218 @@ export default function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="disputes" className="glass-card p-6">
-            <div className="mb-6 space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className="text-xl font-semibold">Disputes Needing Resolution</h2>
-                <div className="relative w-full md:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search disputes..."
-                    className="pl-9"
-                    value={disputeSearch}
-                    onChange={(e) => setDisputeSearch(e.target.value)}
-                  />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
+              {/* Disputes List */}
+              <div className="lg:col-span-4 border-r border-border/50 pr-4 flex flex-col">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold mb-1">Dispute Resolution</h2>
+                  <p className="text-xs text-muted-foreground mb-3">Manage and resolve contract conflicts</p>
+
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by contract or reason..."
+                      className="pl-9 h-8 text-xs bg-muted/20"
+                      value={disputeSearch}
+                      onChange={(e) => setDisputeSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {["all", "open", "resolved"].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setDisputeFilter(s)}
+                        className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all capitalize",
+                          disputeFilter === s
+                            ? "bg-primary/20 text-primary border-primary/50"
+                            : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground/50"
+                        )}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
+                  {disputes.filter(d => {
+                    const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
+                    const matchesStatus = disputeFilter === 'all' || d.status === disputeFilter;
+                    const searchLower = disputeSearch.toLowerCase();
+                    const matchesSearch =
+                      contractTitle.toLowerCase().includes(searchLower) ||
+                      (d.reason || "").toLowerCase().includes(searchLower);
+                    return matchesStatus && matchesSearch;
+                  }).length === 0 ? (
+                    <div className="py-20 text-center text-muted-foreground italic text-sm">
+                      No disputes found
+                    </div>
+                  ) : (
+                    disputes
+                      .filter(d => {
+                        const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
+                        const matchesStatus = disputeFilter === 'all' || d.status === disputeFilter;
+                        const searchLower = disputeSearch.toLowerCase();
+                        const matchesSearch =
+                          contractTitle.toLowerCase().includes(searchLower) ||
+                          (d.reason || "").toLowerCase().includes(searchLower);
+                        return matchesStatus && matchesSearch;
+                      })
+                      .map((d) => {
+                        const relatedContract = contracts.find(c => c.id === d.contract_id);
+                        return (
+                          <div
+                            key={d.id}
+                            onClick={() => setSelectedAdminDispute(d)}
+                            className={cn(
+                              "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
+                              selectedAdminDispute?.id === d.id ? "bg-amber-500/5 border-amber-500/30 ring-1 ring-amber-500/20" : ""
+                            )}
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="text-sm font-bold truncate pr-2">{relatedContract?.title || "Contract"}</span>
+                              <Badge variant={d.status === 'open' ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0 capitalize">
+                                {d.status}
+                              </Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground truncate mb-1 italic">"{d.reason}"</p>
+                            <div className="flex justify-between items-center text-[10px] text-muted-foreground/60">
+                               <span>ID: {d.id.slice(0, 8)}</span>
+                               <span>{new Date(d.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {["all", "open", "resolved"].map((s) => (
-                  <Button
-                    key={s}
-                    size="sm"
-                    variant={disputeFilter === s ? "hero" : "outline"}
-                    className="capitalize"
-                    onClick={() => setDisputeFilter(s)}
-                  >
-                    {s}
-                  </Button>
-                ))}
+
+              {/* Dispute Resolution Center Chat View */}
+              <div className="lg:col-span-8 flex flex-col h-full bg-muted/10 rounded-xl overflow-hidden relative">
+                {!selectedAdminDispute ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
+                    <ShieldAlert className="h-16 w-16 mb-4" />
+                    <p>Select a dispute to open the Resolution Center</p>
+                  </div>
+                ) : (() => {
+                  const contract = contracts.find(c => c.id === selectedAdminDispute.contract_id);
+                  const milestone = milestones.find(m => m.id === selectedAdminDispute.milestone_id);
+                  const client = users.find(u => u.id === contract?.client_id);
+                  const freelancer = users.find(u => u.id === contract?.freelancer_id);
+
+                  return (
+                    <>
+                      <div className="p-6 bg-background/50 border-b border-border flex justify-between items-start">
+                        <div className="flex-1 min-w-0 pr-6">
+                          <h3 className="text-lg font-bold truncate mb-2">{contract?.title} - Dispute</h3>
+                          <div className="flex flex-wrap items-center gap-3">
+                             <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] max-w-[300px] truncate block py-1">
+                               Milestone: {milestone?.title || milestone?.name || "N/A"}
+                             </Badge>
+                             <div className="flex items-center gap-1 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+                                <DollarSign className="h-3 w-3 text-amber-500" />
+                                <span className="text-[10px] font-bold text-amber-500">{milestone?.amount?.toLocaleString()} Locked</span>
+                             </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-4 items-center shrink-0">
+                          {selectedAdminDispute.status === "open" && (
+                            <div className="flex gap-3">
+                               <Button size="sm" variant="hero" className="h-9 px-4 shadow-lg shadow-primary/20" onClick={() => handleResolveDispute(selectedAdminDispute.id, "release")}>
+                                 Release to Freelancer
+                               </Button>
+                               <Button size="sm" variant="outline" className="h-9 px-4 border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => handleResolveDispute(selectedAdminDispute.id, "refund")}>
+                                 Refund Client
+                               </Button>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setSelectedAdminDispute(null)}
+                            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all border border-border"
+                            title="Close"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-amber-500/5 border-b border-amber-500/10">
+                         <p className="text-[10px] text-muted-foreground font-medium uppercase mb-1">Dispute Reason:</p>
+                         <p className="text-xs italic text-foreground bg-background/50 p-2 rounded border border-amber-500/10">
+                           {selectedAdminDispute.reason}
+                         </p>
+                         <div className="flex gap-4 mt-2">
+                            <div className="text-[10px]"><span className="text-muted-foreground">Client:</span> <span className="font-medium">{client?.full_name}</span></div>
+                            <div className="text-[10px]"><span className="text-muted-foreground">Freelancer:</span> <span className="font-medium">{freelancer?.full_name}</span></div>
+                         </div>
+                      </div>
+
+                      {/* Conversation Area */}
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                        {disputeMessages.length === 0 ? (
+                          <div className="py-12 text-center">
+                            <p className="text-xs text-muted-foreground italic">No messages in this dispute center yet.</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">Start the conversation by dropping a message below.</p>
+                          </div>
+                        ) : (
+                          disputeMessages.map((msg) => {
+                            const isMe = msg.user_id === user?.id;
+                            const isClientMsg = msg.user_id === contract?.client_id;
+                            const isFreelancerMsg = msg.user_id === contract?.freelancer_id;
+                            
+                            return (
+                              <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+                                <div className="flex items-center gap-1.5 mb-1 px-1">
+                                  <span className="text-[10px] font-bold text-muted-foreground">
+                                    {isMe ? "You (Admin)" : 
+                                     isClientMsg ? `${client?.full_name} (Client)` : 
+                                     isFreelancerMsg ? `${freelancer?.full_name} (Freelancer)` :
+                                     (msg.profiles?.full_name || 'User')}
+                                  </span>
+                                  <span className="text-[9px] text-muted-foreground/50">
+                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <div className={cn(
+                                  "max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-sm",
+                                  isMe ? "bg-primary text-white rounded-tr-none" : 
+                                  isClientMsg ? "bg-blue-500/10 text-foreground border border-blue-500/20 rounded-tl-none" :
+                                  isFreelancerMsg ? "bg-green-500/10 text-foreground border border-green-500/20 rounded-tl-none" :
+                                  "bg-card text-foreground rounded-tl-none border border-border"
+                                )}>
+                                  {msg.message}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Reply Box */}
+                      {selectedAdminDispute.status === "open" && (
+                        <div className="p-4 bg-background/50 border-t border-border">
+                          <form onSubmit={handleSendDisputeReply} className="flex gap-2">
+                            <Input
+                              placeholder="Type your message to resolve this dispute..."
+                              className="flex-1"
+                              value={newDisputeReply}
+                              onChange={(e) => setNewDisputeReply(e.target.value)}
+                            />
+                            <Button type="submit" size="icon" disabled={!newDisputeReply.trim()}>
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </form>
+                          <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                            Messages sent here are visible to both the Client and the Freelancer.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
-            </div>
-            <div className="rounded-md border border-border overflow-hidden">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead>Contract</TableHead><TableHead>Milestone</TableHead>
-                    <TableHead>Amount Locked</TableHead><TableHead>Reason</TableHead>
-                    <TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {disputes
-                    .filter(d => {
-                      const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
-                      return (
-                        (contractTitle.toLowerCase().includes(disputeSearch.toLowerCase()) ||
-                          (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
-                        (disputeFilter === "all" || d.status === disputeFilter)
-                      );
-                    })
-                    .length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No disputes found</TableCell></TableRow>}
-                  {disputes
-                    .filter(d => {
-                      const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
-                      return (
-                        (contractTitle.toLowerCase().includes(disputeSearch.toLowerCase()) ||
-                          (d.reason || "").toLowerCase().includes(disputeSearch.toLowerCase())) &&
-                        (disputeFilter === "all" || d.status === disputeFilter)
-                      );
-                    })
-                    .map((d) => {
-                      const relatedContract = contracts.find(c => c.id === d.contract_id);
-                      const relatedMilestone = milestones.find(m => m.id === d.milestone_id);
-                      return (
-                        <TableRow key={d.id}>
-                          <TableCell className="font-medium">{relatedContract?.title || d.contract_id?.slice(0, 8)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground font-mono">{relatedMilestone?.name || relatedMilestone?.title || d.milestone_id?.slice(0, 8) || '—'}</TableCell>
-                          <TableCell className="font-semibold text-amber-500">{relatedMilestone?.amount ? `$${Number(relatedMilestone.amount).toLocaleString()}` : '—'}</TableCell>
-                          <TableCell className="max-w-xs truncate text-muted-foreground" title={d.reason}>{d.reason}</TableCell>
-                          <TableCell><Badge variant={d.status === "open" ? "destructive" : "outline"}>{d.status}</Badge></TableCell>
-                          <TableCell className="text-right flex justify-end gap-2">
-                            {d.status === "open" && (
-                              <>
-                                <Button size="sm" variant="hero" disabled={resolving} onClick={() => handleResolveDispute(d.id, "release")}>Release to Freelancer</Button>
-                                <Button size="sm" variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10" disabled={resolving} onClick={() => handleResolveDispute(d.id, "refund")}>Refund Client</Button>
-                              </>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                </TableBody>
-              </Table>
             </div>
           </TabsContent>
 
@@ -641,26 +826,97 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>Title</TableHead><TableHead>Status</TableHead>
-                    <TableHead>Amount</TableHead><TableHead>Client ID</TableHead><TableHead>Freelancer ID</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Freelancer</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Last Update</TableHead>
+                    <TableHead>Completion Date</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {contracts
-                    .filter(c =>
-                      (c.title.toLowerCase().includes(contractSearch.toLowerCase()) ||
-                        c.id.toLowerCase().includes(contractSearch.toLowerCase())) &&
-                      (contractFilter === "all" || c.status === contractFilter)
-                    )
-                    .map(c => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.title}</TableCell>
-                        <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
-                        <TableCell>${c.total_amount?.toLocaleString()}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono">{c.client_id}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono">{c.freelancer_id || 'Pending'}</TableCell>
-                      </TableRow>
-                    ))}
+                    .filter(c => {
+                      const client = users.find(u => u.id === c.client_id);
+                      const freelancer = c.freelancer_id ? users.find(u => u.id === c.freelancer_id) : null;
+                      const searchLower = contractSearch.toLowerCase();
+                      
+                      const matchesSearch = 
+                        c.title.toLowerCase().includes(searchLower) ||
+                        c.id.toLowerCase().includes(searchLower) ||
+                        (client?.full_name || "").toLowerCase().includes(searchLower) ||
+                        (client?.email || "").toLowerCase().includes(searchLower) ||
+                        (freelancer?.full_name || "").toLowerCase().includes(searchLower) ||
+                        (freelancer?.email || "").toLowerCase().includes(searchLower);
+
+                      const matchesFilter = contractFilter === "all" || c.status === contractFilter;
+                      
+                      return matchesSearch && matchesFilter;
+                    })
+                    .map(c => {
+                      const client = users.find(u => u.id === c.client_id);
+                      const freelancer = c.freelancer_id ? users.find(u => u.id === c.freelancer_id) : null;
+                      
+                      // Defensive date formatting
+                      const formatDateSafe = (dateStr: any) => {
+                        if (!dateStr) return null;
+                        const d = new Date(dateStr);
+                        return isNaN(d.getTime()) ? null : d.toLocaleDateString();
+                      };
+
+                      const createdDate = formatDateSafe(c.created_at) || '—';
+                      const updatedDate = formatDateSafe(c.updated_at) || createdDate;
+                      
+                      // Completion date: use completed_at if exists, or updated_at if status is completed
+                      let completionDate = '—';
+                      if (c.status === 'completed') {
+                        completionDate = formatDateSafe(c.completed_at) || formatDateSafe(c.updated_at) || updatedDate;
+                      }
+
+                      return (
+                        <TableRow key={c.id} className="text-xs">
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col">
+                              <span>{c.title}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono">{c.id.slice(0, 8)}...</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn(
+                              "capitalize text-[10px]",
+                              c.status === 'active' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                              c.status === 'completed' ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                              c.status === 'pending' ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
+                              "bg-muted text-muted-foreground"
+                            )}>
+                              {c.status.replace("_", " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-bold">${c.total_amount?.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{client?.full_name || 'Unknown'}</span>
+                              <span className="text-[10px] text-muted-foreground">{client?.email || c.client_id.slice(0, 8)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {freelancer ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground">{freelancer.full_name || 'Anonymous'}</span>
+                                <span className="text-[10px] text-muted-foreground">{freelancer.email || c.freelancer_id.slice(0, 8)}</span>
+                              </div>
+                            ) : (
+                              <span className="text-amber-500 italic">Awaiting acceptance</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{createdDate}</TableCell>
+                          <TableCell className="text-muted-foreground">{updatedDate}</TableCell>
+                          <TableCell className="text-muted-foreground font-medium">{completionDate}</TableCell>
+                        </TableRow>
+                      );
+                    })}
                 </TableBody>
               </Table>
             </div>
