@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, ArrowLeft, ArrowRight, Check, AlertTriangle, ShieldAlert } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
 import { DatePicker } from "@/components/ui/date-picker";
+import { toYMD, formatDate, fromYMD } from "@/lib/utils";
 
 type PaymentMode = "fixed" | "percentage";
 
@@ -263,13 +264,14 @@ const CreateContract = () => {
                 <div>
                   <Label htmlFor="deadline">Overall deadline</Label>
                   <DatePicker
-                    date={deadline ? new Date(deadline) : undefined}
-                    setDate={(date) => setDeadline(date ? date.toISOString().split("T")[0] : "")}
+                    date={fromYMD(deadline)}
+                    setDate={(date) => setDeadline(toYMD(date))}
                     placeholder="Pick a deadline"
                     className="mt-1"
                     calendarProps={{
                       fromYear: new Date().getFullYear(),
                       toYear: new Date().getFullYear() + 2,
+                      disabled: { before: new Date() }
                     }}
                   />
                 </div>
@@ -376,11 +378,11 @@ const CreateContract = () => {
                         <div className="space-y-1">
                           <Label className="text-xs">Due Date</Label>
                           <DatePicker
-                            date={m.due_date ? new Date(m.due_date) : undefined}
+                            date={fromYMD(m.due_date)}
                             setDate={(date) => {
-                              const dateStr = date ? date.toISOString().split("T")[0] : "";
+                              const dateStr = toYMD(date);
                               if (deadline && dateStr > deadline) {
-                                toast.error(`Milestone date cannot be after the contract deadline (${new Date(deadline).toLocaleDateString()})`);
+                                toast.error(`Milestone date cannot be after the contract deadline (${formatDate(deadline)})`);
                                 return;
                               }
                               updateMilestone(i, "due_date", dateStr);
@@ -390,6 +392,7 @@ const CreateContract = () => {
                             calendarProps={{
                               fromYear: new Date().getFullYear(),
                               toYear: new Date().getFullYear() + 2,
+                              disabled: { before: new Date() }
                             }}
                           />
                         </div>
@@ -455,7 +458,7 @@ const CreateContract = () => {
                   {deadline && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Deadline</span>
-                      <span className="text-foreground">{new Date(deadline).toLocaleDateString()}</span>
+                      <span className="text-foreground">{formatDate(deadline)}</span>
                     </div>
                   )}
                   <div className="border-t border-border pt-3">

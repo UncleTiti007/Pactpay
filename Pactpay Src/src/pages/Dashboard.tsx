@@ -40,6 +40,8 @@ const Dashboard = () => {
   const [kycSubmitted, setKycSubmitted] = useState(false);
   const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
   const [bankDetails, setBankDetails] = useState({ bankName: "", accountName: "", accountNumber: "" });
+  const [contractFilter, setContractFilter] = useState("all");
+  const [jobFilter, setJobFilter] = useState("all");
 
   useEffect(() => {
     if (!loading && !user) {
@@ -152,10 +154,11 @@ const Dashboard = () => {
     "Explorer";
 
   const myContracts = contracts.filter((c) => c.client_id === user?.id);
-  const myJobs = contracts.filter((c) => c.freelancer_id === user?.id && c.status !== "pending" && c.status !== "rejected");
+  // myJobs = all contracts where user is the freelancer (all statuses — filter chips handle visibility)
+  const myJobs = contracts.filter((c) => c.freelancer_id === user?.id);
   const myInvitations = contracts.filter((c) => 
     (c.freelancer_id === user?.id || c.invite_email?.toLowerCase() === user?.email?.toLowerCase()) && 
-    c.status === "pending"
+    (c.status === "pending" || c.status === "revision_requested")
   );
 
   const isNewlyRegistered = !kycVerified && !kycSubmitted;
@@ -257,8 +260,15 @@ const Dashboard = () => {
             {/* Contracts Area */}
             <div className="lg:col-span-2">
               <Tabs defaultValue="contracts">
-                <TabsList className={`mb-6 bg-card-elevated border border-border/50 ${isPendingApproval ? "opacity-50 pointer-events-none" : ""}`}>
-                  <TabsTrigger value="contracts">My Contracts</TabsTrigger>
+                <TabsList className={`mb-4 bg-card-elevated border border-border/50 ${isPendingApproval ? "opacity-50 pointer-events-none" : ""}`}>
+                  <TabsTrigger value="contracts" className="relative">
+                    My Contracts
+                    {myContracts.length > 0 && (
+                      <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
+                        {myContracts.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="invitations" className="relative">
                     Invitations
                     {myInvitations.length > 0 && (
@@ -267,10 +277,36 @@ const Dashboard = () => {
                       </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="jobs">My Jobs</TabsTrigger>
+                  <TabsTrigger value="jobs" className="relative">
+                    My Jobs
+                    {myJobs.length > 0 && (
+                      <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
+                        {myJobs.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
                 </TabsList>
 
+                {/* My Contracts Tab */}
                 <TabsContent value="contracts">
+                  {/* Filter chips */}
+                  {myContracts.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {["all", "active", "pending", "revision_requested", "completed", "cancelled"].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setContractFilter(s)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize ${
+                            contractFilter === s
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                          }`}
+                        >
+                          {s === "all" ? `All (${myContracts.length})` : s === "revision_requested" ? "Revision Requested" : s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {loadingContracts ? (
                     <p className="text-muted-foreground italic">Fetching your contracts...</p>
                   ) : myContracts.length === 0 ? (
@@ -286,15 +322,23 @@ const Dashboard = () => {
                         <Link to="/contracts/new">Create your first contract</Link>
                       </Button>
                     </div>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {myContracts.map((c: any) => (
-                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
-                      ))}
-                    </div>
-                  )}
+                  ) : (() => {
+                    const filtered = contractFilter === "all" ? myContracts : myContracts.filter(c => c.status === contractFilter);
+                    return filtered.length === 0 ? (
+                      <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
+                        No {contractFilter} contracts
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {filtered.map((c: any) => (
+                          <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </TabsContent>
 
+                {/* Invitations Tab */}
                 <TabsContent value="invitations">
                   {loadingContracts ? (
                     <p className="text-muted-foreground">Loading...</p>
@@ -313,7 +357,26 @@ const Dashboard = () => {
                   )}
                 </TabsContent>
 
+                {/* My Jobs Tab */}
                 <TabsContent value="jobs">
+                  {/* Filter chips */}
+                  {myJobs.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {["all", "active", "pending", "completed", "cancelled"].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setJobFilter(s)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize ${
+                            jobFilter === s
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-card text-muted-foreground border-border hover:border-primary/40"
+                          }`}
+                        >
+                          {s === "all" ? `All (${myJobs.length})` : s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {loadingContracts ? (
                     <p className="text-muted-foreground">Loading...</p>
                   ) : myJobs.length === 0 ? (
@@ -322,13 +385,20 @@ const Dashboard = () => {
                       <p>No jobs yet</p>
                       <p className="text-xs mt-1 opacity-60">Jobs appear here when someone invites you to a contract</p>
                     </div>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {myJobs.map((c: any) => (
-                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
-                      ))}
-                    </div>
-                  )}
+                  ) : (() => {
+                    const filtered = jobFilter === "all" ? myJobs : myJobs.filter(c => c.status === jobFilter);
+                    return filtered.length === 0 ? (
+                      <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
+                        No {jobFilter} jobs
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {filtered.map((c: any) => (
+                          <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </TabsContent>
               </Tabs>
             </div>

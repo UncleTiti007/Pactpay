@@ -46,6 +46,7 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
   const [disputes, setDisputes] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [milestones, setMilestones] = useState<any[]>([]);
 
   // KYC Review Modal
   const [kycUser, setKycUser] = useState<any>(null);
@@ -95,32 +96,46 @@ export default function AdminDashboard() {
 
       setIsAdmin(true);
       fetchAllData();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Admin check failed:", err);
+      toast.error("Failed to verify admin status: " + err.message);
       navigate("/dashboard");
     }
   };
 
   const fetchAllData = async () => {
     setLoading(true);
-    const [cRes, uRes, dRes, tRes, tickRes, mRes] = await Promise.all([
-      supabase.from("contracts").select("*").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("disputes").select("*").order("created_at", { ascending: false }),
-      supabase.from("transactions").select("*").order("created_at", { ascending: false }),
-      supabase.from("support_tickets").select("*, profiles(full_name, email)").order("updated_at", { ascending: false }),
-      supabase.from("milestones").select("*")
-    ]);
-    setContracts(cRes.data || []);
-    setUsers(uRes.data || []);
-    setDisputes(dRes.data || []);
-    setTransactions(tRes.data || []);
-    setMilestones(mRes.data || []);
-    setTickets(tickRes.data || []);
-    if (tickRes.data && tickRes.data.length > 0 && !selectedAdminTicket) {
-      setSelectedAdminTicket(tickRes.data[0]);
+    try {
+      const [cRes, uRes, dRes, tRes, tickRes, mRes] = await Promise.all([
+        supabase.from("contracts").select("*").order("created_at", { ascending: false }),
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("disputes").select("*").order("created_at", { ascending: false }),
+        supabase.from("transactions").select("*").order("created_at", { ascending: false }),
+        supabase.from("support_tickets").select("*, profiles(full_name, email)").order("updated_at", { ascending: false }),
+        supabase.from("milestones").select("*")
+      ]);
+
+      if (cRes.error) throw cRes.error;
+      if (uRes.error) throw uRes.error;
+      if (dRes.error) throw dRes.error;
+      if (tRes.error) throw tRes.error;
+      if (tickRes.error) throw tickRes.error;
+      if (mRes.error) throw mRes.error;
+
+      setContracts(cRes.data || []);
+      setUsers(uRes.data || []);
+      setDisputes(dRes.data || []);
+      setTransactions(tRes.data || []);
+      setMilestones(mRes.data || []);
+      setTickets(tickRes.data || []);
+      // Don't auto-select — let admin choose
+
+    } catch (err: any) {
+      console.error("Failed to fetch admin data:", err);
+      toast.error("Data fetch failed: " + err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchAdminMessages = async (ticketId: string) => {
@@ -953,15 +968,15 @@ export default function AdminDashboard() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
-                                status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
-                                  'bg-green-500/20 text-green-500 border-green-500/30'
+                              status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
+                                'bg-green-500/20 text-green-500 border-green-500/30'
                               }`}>
                               {status}
                             </Badge>
                           </TableCell>
                           <TableCell className={`font-bold ${(effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' :
-                              (effectiveType === 'fee') ? 'text-amber-500' :
-                                (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
+                            (effectiveType === 'fee') ? 'text-amber-500' :
+                              (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
                             }`}>
                             ${t.amount?.toLocaleString()}
                           </TableCell>
@@ -1129,7 +1144,7 @@ export default function AdminDashboard() {
                           From: {selectedAdminTicket.profiles?.full_name || 'User'} ({selectedAdminTicket.profiles?.email || selectedAdminTicket.user_id.slice(0, 8)})
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <Select
                           value={selectedAdminTicket.status}
                           onValueChange={async (val) => {
@@ -1150,6 +1165,13 @@ export default function AdminDashboard() {
                             <SelectItem value="closed">Closed</SelectItem>
                           </SelectContent>
                         </Select>
+                        <button
+                          onClick={() => setSelectedAdminTicket(null)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                          title="Back to ticket list"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
 

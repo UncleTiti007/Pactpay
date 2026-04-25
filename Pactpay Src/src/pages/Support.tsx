@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { 
   MessageSquare, Send, Plus, Search, 
   Clock, CheckCircle2, AlertCircle, ChevronRight,
-  LifeBuoy, ArrowLeft, MessageSquareText, Activity
+  LifeBuoy, ArrowLeft, MessageSquareText, Activity, X
 } from "lucide-react";
 import { cn, formatTimeAgo } from "@/lib/utils";
 
@@ -116,9 +116,7 @@ const Support = () => {
       toast.error("Failed to load tickets");
     } else {
       setTickets(data || []);
-      if (data && data.length > 0 && !selectedTicket) {
-        setSelectedTicket(data[0]);
-      }
+      // Don't auto-select — let user choose
     }
     setLoading(false);
   };
@@ -360,6 +358,13 @@ const Support = () => {
                         Close Ticket
                       </Button>
                     )}
+                    <button
+                      onClick={() => setSelectedTicket(null)}
+                      className="ml-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                      title="Back to ticket list"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 

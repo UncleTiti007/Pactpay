@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Plus, Trash2, AlertTriangle, Info } from "lucide-react";
 import { toast } from "sonner";
+import { toYMD, fromYMD, formatDate } from "@/lib/utils";
 
 interface Milestone {
   id?: string;
@@ -158,10 +159,13 @@ export function EditContractDialog({ isOpen, onOpenChange, contract, milestones:
               </div>
               <div className="space-y-2">
                 <Label>Final Deadline</Label>
-                <DatePicker 
-                  date={deadline ? new Date(deadline) : undefined} 
-                  setDate={(d) => setDeadline(d ? d.toISOString().split('T')[0] : "")} 
-                />
+                  <DatePicker 
+                    date={fromYMD(deadline)} 
+                    setDate={(d) => setDeadline(toYMD(d))} 
+                    calendarProps={{
+                      disabled: { before: new Date() }
+                    }}
+                  />
               </div>
             </div>
           </div>
@@ -195,9 +199,12 @@ export function EditContractDialog({ isOpen, onOpenChange, contract, milestones:
                         />
                       </div>
                       <DatePicker 
-                        date={m.due_date ? new Date(m.due_date) : undefined} 
-                        setDate={(d) => updateMilestone(i, "due_date", d ? d.toISOString().split('T')[0] : "")}
+                        date={fromYMD(m.due_date)} 
+                        setDate={(d) => updateMilestone(i, "due_date", toYMD(d))}
                         className="h-8 text-xs"
+                        calendarProps={{
+                          disabled: { before: new Date() }
+                        }}
                       />
                     </div>
                   </div>

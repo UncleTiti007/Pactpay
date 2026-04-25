@@ -2,6 +2,8 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { Calendar, DollarSign } from "lucide-react";
 
+import { formatDate } from "@/lib/utils";
+
 interface ContractCardProps {
   id: string;
   title: string;
@@ -19,6 +21,8 @@ const statusColors: Record<string, string> = {
   completed: "bg-status-completed/20 text-status-completed border-status-completed/30",
   disputed: "bg-status-disputed/20 text-status-disputed border-status-disputed/30",
   cancelled: "bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30",
+  rejected: "bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30",
+  revision_requested: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
 const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyName, disabled }: ContractCardProps) => {
@@ -39,7 +43,7 @@ const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyNam
         {deadline && (
           <span className="flex items-center gap-1">
             <Calendar className="h-3.5 w-3.5" />
-            {new Date(deadline).toLocaleDateString()}
+            {formatDate(deadline)}
           </span>
         )}
       </div>

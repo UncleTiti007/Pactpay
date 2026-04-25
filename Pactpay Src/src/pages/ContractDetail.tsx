@@ -9,8 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
+import { formatDate } from "@/lib/utils";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -19,6 +20,8 @@ const statusColors: Record<string, string> = {
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
   disputed: "bg-red-500/20 text-red-400 border-red-500/30",
   cancelled: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  rejected: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  revision_requested: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
 const milestoneStatusColors: Record<string, string> = {
@@ -73,6 +76,11 @@ const ContractDetail = () => {
   const [requestingRevision, setRequestingRevision] = useState<any>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
   const [submittingHistory, setSubmittingHistory] = useState(false);
+
+  // Contract-level revision request state (freelancer requesting changes before accept)
+  const [showContractRevisionDialog, setShowContractRevisionDialog] = useState(false);
+  const [contractRevisionNote, setContractRevisionNote] = useState("");
+  const [submittingContractRevision, setSubmittingContractRevision] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -503,6 +511,112 @@ const ContractDetail = () => {
     }
   };
 
+  // Freelancer requests contract-level revision before accepting
+  const handleRequestContractRevision = async () => {
+    if (!contractRevisionNote.trim()) {
+      toast.error("Please describe what needs to be changed.");
+      return;
+    }
+    if (!contract || !user) return;
+
+    setSubmittingContractRevision(true);
+    try {
+      const { error } = await supabase
+        .from("contracts")
+        .update({ status: "revision_requested" })
+        .eq("id", contract.id);
+
+      if (error) throw error;
+
+      await supabase.from("notifications").insert({
+        user_id: contract.client_id,
+        type: "update",
+        title: "Revision Requested",
+        message: `${user?.user_metadata?.full_name || user.email} has requested changes to "${contract.title}" before accepting. Note: ${contractRevisionNote}`,
+        link: `/contracts/${contract.id}`
+      });
+
+      toast.success("Revision request sent! The client will update and re-send the contract.");
+      setShowContractRevisionDialog(false);
+      setContractRevisionNote("");
+      fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to send revision request: " + err.message);
+    } finally {
+      setSubmittingContractRevision(false);
+    }
+  };
+
+  // Client re-activates invite after editing the contract following a revision request
+  const handleResendToFreelancer = async () => {
+    if (!contract) return;
+    setAccepting(true);
+    try {
+      // Reset contract status to pending
+      const { error: cError } = await supabase
+        .from("contracts")
+        .update({ status: "pending" })
+        .eq("id", contract.id);
+      if (cError) throw cError;
+
+      // Re-activate the existing invite (un-expire it) or insert a fresh one
+      if (activeInvite) {
+        await supabase
+          .from("contract_invites")
+          .update({ accepted: false, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+          .eq("id", activeInvite.id);
+      }
+
+      // Notify the freelancer
+      if (contract.freelancer_id) {
+        await supabase.from("notifications").insert({
+          user_id: contract.freelancer_id,
+          type: "invite",
+          title: "Contract Updated — Please Review",
+          message: `${clientName} has updated the contract "${contract.title}" based on your revision request. Please review and accept.`,
+          link: `/contracts/${contract.id}`
+        });
+      }
+
+      toast.success("Contract re-sent to the freelancer for review!");
+      fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to re-send contract: " + err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  // Client refuses the freelancer's revision request and cancels the contract
+  const handleRefuseRevision = async () => {
+    if (!contract) return;
+    setAccepting(true);
+    try {
+      const { error } = await supabase
+        .from("contracts")
+        .update({ status: "cancelled" })
+        .eq("id", contract.id);
+      if (error) throw error;
+
+      if (contract.freelancer_id) {
+        await supabase.from("notifications").insert({
+          user_id: contract.freelancer_id,
+          type: "update",
+          title: "Revision Refused",
+          message: `The client has decided not to proceed with revisions for "${contract.title}". The contract has been cancelled.`,
+          link: `/contracts/${contract.id}`
+        });
+      }
+
+      toast.info("Revision refused. Contract has been cancelled.");
+      fetchContract();
+    } catch (err: any) {
+      toast.error("Failed to refuse revision: " + err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const handleSubmitDispute = async () => {
     if (!disputingMilestone || !disputeReason.trim()) {
       toast.error("Please provide a reason for the dispute");
@@ -691,7 +805,7 @@ const ContractDetail = () => {
           </div>
         )}
 
-        {/* Invitation Banner */}
+        {/* Invitation Banner — shown to invited freelancer when status is pending */}
         {contract.status === "pending" && isInvited && activeInvite && (
           <div className="mb-8 rounded-xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -709,6 +823,15 @@ const ContractDetail = () => {
                 <Button variant="hero" size="lg" onClick={handleAcceptInvite} disabled={accepting || !kycVerified}>
                   {accepting ? "Accepting..." : "Accept & Start Workspace"}
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  onClick={() => setShowContractRevisionDialog(true)}
+                  disabled={accepting}
+                  className="border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                >
+                  <MessageSquarePlus className="mr-2 h-4 w-4" /> Request Revision
+                </Button>
                 <Button variant="ghost" size="lg" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
                   Decline
                 </Button>
@@ -719,6 +842,90 @@ const ContractDetail = () => {
                 You must complete identity verification in your profile before you can accept this contract.
               </p>
             )}
+
+            {/* Inline revision dialog for freelancer */}
+            {showContractRevisionDialog && (
+              <div className="mt-4 border-t border-amber-500/30 pt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                <p className="text-sm font-medium text-amber-400 flex items-center gap-2">
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Describe what needs to be changed
+                </p>
+                <textarea
+                  className="w-full rounded-lg border border-amber-500/30 bg-background/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/50 resize-none"
+                  rows={3}
+                  placeholder="e.g. Please increase the budget for Milestone 2, or adjust the deadline..."
+                  value={contractRevisionNote}
+                  onChange={(e) => setContractRevisionNote(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => { setShowContractRevisionDialog(false); setContractRevisionNote(""); }} disabled={submittingContractRevision}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" className="flex-1 bg-amber-500 hover:bg-amber-600 text-white" onClick={handleRequestContractRevision} disabled={submittingContractRevision || !contractRevisionNote.trim()}>
+                    {submittingContractRevision ? "Sending..." : "Send Revision Request"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Freelancer view: revision request already sent, awaiting client update */}
+        {contract.status === "revision_requested" && isFreelancer && (
+          <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <MessageSquarePlus className="h-5 w-5 text-amber-400 shrink-0 mt-1" />
+              <div>
+                <h2 className="text-lg font-bold text-amber-400">Revision Request Sent</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Your revision request has been sent to {clientName}. Once they update the contract, you'll receive a notification to review and accept.
+                </p>
+                <div className="flex gap-2 mt-4">
+                  <Button size="sm" variant="outline" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
+                    <XCircle className="mr-1 h-4 w-4" /> Decline & Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Client view: freelancer requested a revision */}
+        {contract.status === "revision_requested" && isClient && (
+          <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+              <div className="flex items-start gap-3">
+                <MessageSquarePlus className="h-5 w-5 text-amber-400 shrink-0 mt-1" />
+                <div>
+                  <h2 className="text-lg font-bold text-amber-400">Revision Requested by Freelancer</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {freelancerName || "The freelancer"} has requested changes to this contract before accepting. 
+                    Edit the contract to accommodate their request, then re-send it. Or refuse the revision to cancel.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button
+                  variant="hero"
+                  size="sm"
+                  onClick={handleResendToFreelancer}
+                  disabled={accepting}
+                  className="gap-2"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {accepting ? "Sending..." : "Re-send to Freelancer"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefuseRevision}
+                  disabled={accepting}
+                  className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                >
+                  <XCircle className="mr-1 h-4 w-4" /> Refuse Revision
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -839,7 +1046,7 @@ const ContractDetail = () => {
 
                         {m.due_date && (
                           <p className="mb-3 text-xs text-muted-foreground">
-                            Due: {new Date(m.due_date).toLocaleDateString()}
+                            Due: {formatDate(m.due_date)}
                           </p>
                         )}
 
@@ -1138,7 +1345,7 @@ const ContractDetail = () => {
               {contract.deadline && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Deadline</span>
-                  <span className="text-foreground">{new Date(contract.deadline).toLocaleDateString()}</span>
+                  <span className="text-foreground">{formatDate(contract.deadline)}</span>
                 </div>
               )}
             </div>
