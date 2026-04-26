@@ -408,8 +408,7 @@ export default function AdminDashboard() {
       const { error: disputeErr } = await supabase
         .from("disputes")
         .update({ 
-          status: "resolved", 
-          resolution_notes: `Admin resolved: ${resolution}` 
+          status: "resolved"
         })
         .eq("id", disputeId);
       
