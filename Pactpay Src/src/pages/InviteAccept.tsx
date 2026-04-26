@@ -21,11 +21,6 @@ const InviteAccept = () => {
   const [kycVerified, setKycVerified] = useState<boolean | null>(null);
   const [kycSubmitted, setKycSubmitted] = useState(false);
 
-  // Revision request state
-  const [showRevisionDialog, setShowRevisionDialog] = useState(false);
-  const [revisionNote, setRevisionNote] = useState("");
-  const [submittingRevision, setSubmittingRevision] = useState(false);
-
   useEffect(() => {
     if (!token) return;
 
@@ -123,6 +118,7 @@ const InviteAccept = () => {
     setLoading(false);
   };
 
+
   const acceptContract = async () => {
     if (!user || !contract || !invite) return;
 
@@ -196,40 +192,6 @@ const InviteAccept = () => {
     navigate("/dashboard");
   };
 
-  const requestRevision = async () => {
-    if (!revisionNote.trim()) {
-      toast.error("Please describe what needs to be changed.");
-      return;
-    }
-    if (!contract || !user) return;
-
-    setSubmittingRevision(true);
-    try {
-      // 1. Set contract status to revision_requested
-      const { error: cError } = await supabase
-        .from("contracts")
-        .update({ status: "revision_requested" })
-        .eq("id", contract.id);
-
-      if (cError) throw cError;
-
-      // 2. Notify the client with the revision note
-      await supabase.from("notifications").insert({
-        user_id: contract.client_id,
-        type: "update",
-        title: "Revision Requested",
-        message: `${user?.user_metadata?.full_name || user.email} has requested changes to "${contract.title}" before accepting. Note: ${revisionNote}`,
-        link: `/contracts/${contract.id}`
-      });
-
-      toast.success("Revision request sent! The client will update the contract and re-send it.");
-      navigate("/dashboard");
-    } catch (err: any) {
-      toast.error("Failed to send revision request: " + err.message);
-    } finally {
-      setSubmittingRevision(false);
-    }
-  };
 
   if (loading || authLoading) {
     return (
@@ -306,92 +268,39 @@ const InviteAccept = () => {
             </div>
           )}
 
-          {/* Revision Request Dialog (inline) */}
-          {showRevisionDialog && (
-            <div className="border-t border-amber-500/30 pt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-              <p className="text-sm font-medium text-amber-400 flex items-center gap-2">
-                <MessageSquarePlus className="h-4 w-4" />
-                Describe what needs to be changed
-              </p>
-              <Textarea
-                placeholder="e.g. Please increase the budget for Milestone 2, or adjust the deadline to May 15th..."
-                value={revisionNote}
-                onChange={(e) => setRevisionNote(e.target.value)}
-                rows={4}
-                className="text-sm resize-none"
-              />
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => { setShowRevisionDialog(false); setRevisionNote(""); }}
-                  disabled={submittingRevision}
+          {/* Action buttons */}
+          <div className="pt-2 space-y-2">
+            {kycVerified === true ? (
+              <div className="flex gap-3">
+                <Button 
+                  variant="hero" 
+                  className="flex-1" 
+                  onClick={acceptContract} 
+                  disabled={accepting}
                 >
-                  Cancel
+                  <CheckCircle className="mr-1 h-4 w-4" />
+                  {accepting ? "Accepting..." : "Accept Contract"}
                 </Button>
-                <Button
-                  size="sm"
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white"
-                  onClick={requestRevision}
-                  disabled={submittingRevision || !revisionNote.trim()}
-                >
-                  {submittingRevision ? "Sending..." : "Send Revision Request"}
+                <Button variant="outline" className="flex-1" onClick={declineContract} disabled={accepting}>
+                  <XCircle className="mr-1 h-4 w-4" /> Decline
                 </Button>
               </div>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {!showRevisionDialog && (
-            <div className="pt-2 space-y-2">
-              {kycVerified === true ? (
-                <>
-                  <div className="flex gap-3">
-                    <Button variant="hero" className="flex-1" onClick={acceptContract} disabled={accepting}>
-                      <CheckCircle className="mr-1 h-4 w-4" />
-                      {accepting ? "Accepting..." : "Accept Contract"}
-                    </Button>
-                    <Button variant="outline" className="flex-1" onClick={declineContract} disabled={accepting}>
-                      <XCircle className="mr-1 h-4 w-4" /> Decline
-                    </Button>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    className="w-full text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/20"
-                    onClick={() => setShowRevisionDialog(true)}
-                    disabled={accepting}
-                  >
-                    <MessageSquarePlus className="mr-2 h-4 w-4" />
-                    Request Revision
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    className="w-full border-amber-500/30 text-amber-400 bg-amber-500/5 cursor-not-allowed"
-                    disabled={true}
-                  >
-                    <AlertTriangle className="mr-1 h-4 w-4" /> 
-                    {kycSubmitted ? "KYC Pending Review" : "KYC Required to Accept"}
-                  </Button>
-                  <div className="flex gap-3">
-                    <Button
-                      variant="ghost"
-                      className="flex-1 text-amber-400 hover:bg-amber-500/10 border border-amber-500/20"
-                      onClick={() => setShowRevisionDialog(true)}
-                    >
-                      <MessageSquarePlus className="mr-1 h-4 w-4" /> Request Revision
-                    </Button>
-                    <Button variant="ghost" className="flex-1" onClick={declineContract}>
-                      <XCircle className="mr-1 h-4 w-4" /> Decline
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full border-amber-500/30 text-amber-400 bg-amber-500/5 cursor-not-allowed"
+                  disabled={true}
+                >
+                  <AlertTriangle className="mr-1 h-4 w-4" /> 
+                  {kycSubmitted ? "KYC Pending Review" : "KYC Required to Accept"}
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={declineContract}>
+                  <XCircle className="mr-1 h-4 w-4" /> Decline Invitation
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

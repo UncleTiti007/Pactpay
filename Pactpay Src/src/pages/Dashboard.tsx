@@ -10,9 +10,10 @@ import TopUpModal from "@/components/dashboard/TopUpModal";
 import WithdrawModal from "@/components/dashboard/WithdrawModal";
 import PendingApprovalsModal from "@/components/dashboard/PendingApprovalsModal";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText } from "lucide-react";
+import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText, Bell } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockedDashboardOverlay from "@/components/dashboard/LockedDashboardOverlay";
+import { toast } from "sonner";
 
 interface Contract {
   id: string;

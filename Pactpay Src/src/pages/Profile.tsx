@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { User as UserIcon, Pencil, Check, X, ShieldCheck, Mail, Phone, Globe, Calendar } from "lucide-react";
+import { User as UserIcon, Pencil, Check, X, ShieldCheck, Mail, Phone, Globe, Calendar, ArrowLeft } from "lucide-react";
 
 const Profile = () => {
   const { user } = useAuth();
@@ -155,6 +155,13 @@ const Profile = () => {
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
       <div className="container mx-auto max-w-5xl px-4 py-8 space-y-6">
+        <button 
+          onClick={() => navigate(-1)} 
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit group"
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+          Back to Dashboard
+        </button>
 
         <div className="glass-card p-6 flex items-center gap-5">
           <div 

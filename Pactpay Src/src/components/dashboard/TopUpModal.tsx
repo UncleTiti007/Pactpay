@@ -230,7 +230,13 @@ const TopUpModal = ({ isOpen, onClose, onSuccess }: TopUpModalProps) => {
         </DialogHeader>
 
         {!clientSecret ? (
-          <div className="space-y-4 py-4">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleNext();
+            }} 
+            className="space-y-4 py-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="amount">Amount (USD)</Label>
               <Input
@@ -239,15 +245,16 @@ const TopUpModal = ({ isOpen, onClose, onSuccess }: TopUpModalProps) => {
                 placeholder="1000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                autoFocus
               />
             </div>
             <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={resetAndClose}>Cancel</Button>
-              <Button variant="hero" onClick={handleNext} disabled={isLoading || !amount}>
+              <Button type="button" variant="ghost" onClick={resetAndClose}>Cancel</Button>
+              <Button type="submit" variant="hero" disabled={isLoading || !amount}>
                 {isLoading ? "Starting..." : "Next"}
               </Button>
             </div>
-          </div>
+          </form>
         ) : (
           <Elements 
             stripe={stripePromise} 

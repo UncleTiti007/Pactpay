@@ -59,8 +59,7 @@ const DashboardNavbar = () => {
           (payload) => {
             // Filter locally to ensure UUID matching works perfectly
             if (payload.new.user_id === user.id) {
-              console.log("🔔 Notification received!", payload.new);
-              setNotifications(prev => [payload.new, ...prev].slice(0, 5));
+              setNotifications(prev => [payload.new, ...prev].slice(0, 10));
               setUnreadCount(prev => prev + 1);
               
               // Premium Toast Alert
@@ -95,16 +94,27 @@ const DashboardNavbar = () => {
   };
 
   const fetchNotifications = async () => {
-    const { data } = await supabase
+    // 1. Fetch latest 10 notifications for the dropdown
+    const { data: listData } = await supabase
       .from("notifications")
       .select("*")
       .eq("user_id", user!.id)
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(10);
 
-    if (data) {
-      setNotifications(data);
-      setUnreadCount(data.filter(n => !n.is_read).length);
+    if (listData) {
+      setNotifications(listData);
+    }
+
+    // 2. Fetch exact unread count for the badge
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("*", { count: 'exact', head: true })
+      .eq("user_id", user!.id)
+      .or('is_read.eq.false,is_read.is.null');
+
+    if (!error) {
+      setUnreadCount(count || 0);
     }
   };
 
@@ -185,46 +195,52 @@ const DashboardNavbar = () => {
                     <p className="text-xs text-muted-foreground font-medium">No notifications yet</p>
                   </div>
                 ) : (
-                  notifications.map((n) => (
-                    <DropdownMenuItem
-                      key={n.id}
-                      className={cn(
-                        "flex items-start gap-3 p-4 cursor-pointer transition-all border-b border-border/10 last:border-0 outline-none",
-                        !n.is_read ? "bg-primary/[0.03] hover:bg-primary/[0.06] focus:bg-primary/[0.06]" : "hover:bg-muted/30 focus:bg-muted/30"
-                      )}
-                      onClick={() => {
-                        markAsRead(n.id);
-                        if (n.link) navigate(n.link);
-                      }}
-                    >
-                      <div className={cn(
-                        "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-all",
-                        n.type === 'invite' ? "bg-blue-500/10 ring-blue-500/20 text-blue-500" :
-                        n.type === 'payment' ? "bg-emerald-500/10 ring-emerald-500/20 text-emerald-500" :
-                        n.type === 'dispute' ? "bg-destructive/10 ring-destructive/20 text-destructive" :
-                        "bg-primary/10 ring-primary/20 text-primary"
-                      )}>
-                        {n.type === 'invite' ? <Briefcase className="h-[1.1rem] w-[1.1rem]" /> :
-                         n.type === 'payment' ? <DollarSign className="h-[1.1rem] w-[1.1rem]" /> :
-                         n.type === 'dispute' ? <AlertCircle className="h-[1.1rem] w-[1.1rem]" /> :
-                         <CheckCircle2 className="h-[1.1rem] w-[1.1rem]" />}
-                      </div>
-                      <div className="flex flex-col flex-1 gap-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cn("text-sm font-bold truncate", !n.is_read ? "text-foreground" : "text-muted-foreground")}>
-                            {n.title}
-                          </span>
-                          {!n.is_read && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+                  notifications.map((n) => {
+                    const [displayMessage, smartLink] = (n.message || "").split("|||");
+                    const fallbackTitle = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    
+                    return (
+                      <DropdownMenuItem
+                        key={n.id}
+                        className={cn(
+                          "flex items-start gap-3 p-4 cursor-pointer transition-all border-b border-border/10 last:border-0 outline-none",
+                          !n.is_read ? "bg-primary/[0.03] hover:bg-primary/[0.06] focus:bg-primary/[0.06]" : "hover:bg-muted/30 focus:bg-muted/30"
+                        )}
+                        onClick={() => {
+                          markAsRead(n.id);
+                          const targetLink = smartLink || n.link;
+                          if (targetLink) navigate(targetLink);
+                        }}
+                      >
+                        <div className={cn(
+                          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-all",
+                          n.type === 'invite' ? "bg-blue-500/10 ring-blue-500/20 text-blue-500" :
+                          n.type === 'payment' ? "bg-emerald-500/10 ring-emerald-500/20 text-emerald-500" :
+                          n.type === 'dispute' ? "bg-destructive/10 ring-destructive/20 text-destructive" :
+                          "bg-primary/10 ring-primary/20 text-primary"
+                        )}>
+                          {n.type === 'invite' ? <Briefcase className="h-[1.1rem] w-[1.1rem]" /> :
+                           n.type === 'payment' ? <DollarSign className="h-[1.1rem] w-[1.1rem]" /> :
+                           n.type === 'dispute' ? <AlertCircle className="h-[1.1rem] w-[1.1rem]" /> :
+                           <CheckCircle2 className="h-[1.1rem] w-[1.1rem]" />}
                         </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                          {n.message}
-                        </p>
-                        <span className="text-[10px] font-medium text-muted-foreground/40 mt-1 flex items-center gap-1">
-                          {formatTimeAgo(n.created_at)}
-                        </span>
-                      </div>
-                    </DropdownMenuItem>
-                  ))
+                        <div className="flex flex-col flex-1 gap-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={cn("text-sm font-bold truncate", !n.is_read ? "text-foreground" : "text-muted-foreground")}>
+                              {n.title || fallbackTitle}
+                            </span>
+                            {!n.is_read && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                            {displayMessage}
+                          </p>
+                          <span className="text-[10px] font-medium text-muted-foreground/40 mt-1 flex items-center gap-1">
+                            {formatTimeAgo(n.created_at)}
+                          </span>
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })
                 )}
               </div>
             </DropdownMenuContent>

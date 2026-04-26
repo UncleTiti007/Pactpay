@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { 
-  CheckCircle2, DollarSign, Mail, Bell, AlertTriangle, 
+  CheckCircle2, DollarSign, Mail, Bell, AlertTriangle, Activity,
   TrendingUp, ArrowUpCircle, ShieldCheck, UserCheck 
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDistanceToNow } from "date-fns";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 const getIconForType = (type: string) => {
   switch (type) {
@@ -28,7 +30,11 @@ const getIconForType = (type: string) => {
     case "invite":
       return { icon: Mail, color: "text-blue-500", bg: "bg-blue-500/10" };
     case "dispute":
+    case "system":
       return { icon: AlertTriangle, color: "text-red-500", bg: "bg-red-500/10" };
+    case "update":
+    case "milestone_submitted":
+      return { icon: Activity, color: "text-blue-500", bg: "bg-blue-500/10" };
     default:
       return { icon: Bell, color: "text-primary", bg: "bg-primary/10" };
   }
@@ -36,6 +42,7 @@ const getIconForType = (type: string) => {
 
 const ActivityFeed = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,21 +52,21 @@ const ActivityFeed = () => {
 
   const fetchActivities = async () => {
     try {
-      // 1. Fetch from notifications table
+      // 1. Fetch from notifications table (increased limit)
       const { data: notifications } = await supabase
         .from("notifications")
         .select("*")
         .eq("user_id", user?.id)
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(20);
         
-      // 2. Fetch from transactions table (Major financial events)
+      // 2. Fetch from transactions table (increased limit)
       const { data: transactions } = await supabase
         .from("transactions")
         .select("*")
         .or(`from_user_id.eq.${user?.id},to_user_id.eq.${user?.id}`)
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(20);
 
       // 3. Normalize transactions into activity-like objects
       const transActivities = (transactions || []).map(t => {
@@ -110,13 +117,16 @@ const ActivityFeed = () => {
       // 4. Merge and sort
       const merged = [
         ...(notifications || []).map(n => {
+          // Parse Smart Link from message
+          const [displayMessage, smartLink] = (n.message || "").split("|||");
+          
           // Derive a title if missing
           let title = n.title;
           if (!title) {
             title = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             if (title === 'System') title = 'Notification';
           }
-          return { ...n, title, category: 'notification' };
+          return { ...n, title, message: displayMessage, smartLink, category: 'notification' };
         }),
         ...transActivities
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -162,26 +172,48 @@ const ActivityFeed = () => {
             ) : (
               activities.map((item, idx) => {
                 const { icon: Icon, color, bg } = getIconForType(item.type);
+                const isClickable = !!(item.link || item.smartLink || item.category === 'transaction');
+                
                 return (
                   <div 
                     key={item.id} 
-                    className="flex items-start gap-3 animate-in fade-in slide-in-from-right-2 duration-300"
+                    className={cn(
+                      "flex items-start gap-3 animate-in fade-in slide-in-from-right-2 duration-300 group",
+                      isClickable ? "cursor-pointer" : ""
+                    )}
                     style={{ animationDelay: `${idx * 50}ms` }}
+                    onClick={() => {
+                      if (item.category === 'notification') {
+                        const targetLink = item.smartLink || item.link;
+                        if (targetLink) navigate(targetLink);
+                      } else if (item.category === 'transaction') {
+                        navigate('/transactions');
+                      }
+                    }}
                   >
-                    <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${bg} transition-transform hover:scale-110`}>
+                    <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${bg} transition-all group-hover:scale-110`}>
                       <Icon className={`h-4 w-4 ${color}`} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground leading-snug mb-0.5">
+                      <p className="text-sm font-semibold text-foreground leading-snug mb-0.5 group-hover:text-primary transition-colors">
                         {item.title}
                       </p>
-                      <p className="text-[13px] text-muted-foreground leading-snug">
+                      <p className="text-[13px] text-muted-foreground leading-snug group-hover:text-foreground/80 transition-colors">
                         {item.message}
                       </p>
                       <p className="mt-1 text-[10px] items-center flex gap-1 text-muted-foreground/50 font-medium">
                         <span className="capitalize">{item.category}</span>
                         <span>•</span>
-                        {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                        {item.created_at
+                          ? (() => {
+                              try {
+                                const d = new Date(item.created_at);
+                                return isNaN(d.getTime()) ? "recently" : formatDistanceToNow(d, { addSuffix: true });
+                              } catch {
+                                return "recently";
+                              }
+                            })()
+                          : "recently"}
                       </p>
                     </div>
                   </div>
@@ -197,7 +229,7 @@ const ActivityFeed = () => {
         )}
       </div>
       
-      <style jsx>{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 3px;
         }

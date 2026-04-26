@@ -3,13 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
 import DashboardNavbar from "@/components/dashboard/DashboardNavbar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle, Send } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle, Send, Maximize2 } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
 import { formatDate, cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ const statusColors: Record<string, string> = {
   disputed: "bg-red-500/20 text-red-400 border-red-500/30",
   cancelled: "bg-gray-500/20 text-gray-400 border-gray-500/30",
   rejected: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-  revision_requested: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  rejected: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
 const milestoneStatusColors: Record<string, string> = {
@@ -30,6 +30,7 @@ const milestoneStatusColors: Record<string, string> = {
   revision: "bg-orange-500/20 text-orange-400 border-orange-500/30",
   approved: "bg-green-500/20 text-green-400 border-green-500/30",
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
+  disputed: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
 const ContractDetail = () => {
@@ -77,10 +78,6 @@ const ContractDetail = () => {
   const [revisionFeedback, setRevisionFeedback] = useState("");
   const [submittingHistory, setSubmittingHistory] = useState(false);
 
-  // Contract-level revision request state (freelancer requesting changes before accept)
-  const [showContractRevisionDialog, setShowContractRevisionDialog] = useState(false);
-  const [contractRevisionNote, setContractRevisionNote] = useState("");
-  const [submittingContractRevision, setSubmittingContractRevision] = useState(false);
   const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
   const [newDisputeMessage, setNewDisputeMessage] = useState("");
   const [dispute, setDispute] = useState<any>(null);
@@ -99,107 +96,119 @@ const ContractDetail = () => {
   }, [id, user]);
 
   const fetchContract = async () => {
-    const { data: c } = await supabase
-      .from("contracts")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!c) {
-      toast.error("Contract not found");
-      navigate("/dashboard");
-      return;
-    }
-
-    setContract(c);
-
-    // Fetch latest active invite
-    const { data: invs } = await supabase
-      .from("contract_invites")
-      .select("*")
-      .eq("contract_id", id)
-      .eq("accepted", false)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    const latestInvite = invs?.[0] || null;
-    setActiveInvite(latestInvite);
-    setNewInviteEmail(latestInvite?.invited_email || c.invite_email || "");
-
-    const { data: ms } = await supabase
-      .from("milestones")
-      .select("*")
-      .eq("contract_id", id)
-      .order("order_index", { ascending: true });
-
-    const milestoneList = ms || [];
-    setMilestones(milestoneList);
-
-    if (milestoneList.length > 0) {
-      const milestoneIds = milestoneList.map((m: any) => m.id);
-      const { data: allDeliverables } = await supabase
-        .from("deliverables")
+    try {
+      const { data: c } = await supabase
+        .from("contracts")
         .select("*")
-        .in("milestone_id", milestoneIds)
+        .eq("id", id)
+        .single();
+
+      if (!c) {
+        toast.error("Contract not found");
+        navigate("/dashboard");
+        return;
+      }
+
+      setContract(c);
+
+      // Fetch latest active invite
+      const { data: invs } = await supabase
+        .from("contract_invites")
+        .select("*")
+        .eq("contract_id", id)
+        .eq("accepted", false)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const latestInvite = invs?.[0] || null;
+      setActiveInvite(latestInvite);
+      setNewInviteEmail(latestInvite?.invited_email || c.invite_email || "");
+
+      const { data: ms } = await supabase
+        .from("milestones")
+        .select("*")
+        .eq("contract_id", id)
         .order("order_index", { ascending: true });
 
-      const grouped: Record<string, any[]> = {};
-      (allDeliverables || []).forEach((d: any) => {
-        if (!grouped[d.milestone_id]) grouped[d.milestone_id] = [];
-        grouped[d.milestone_id].push(d);
-      });
-      setDeliverablesByMilestone(grouped);
-    }
+      const milestoneList = ms || [];
+      setMilestones(milestoneList);
 
-    if (c.client_id) {
-      const { data: cp } = await supabase.from("profiles").select("full_name").eq("id", c.client_id).single();
-      setClientName(cp?.full_name || "Unknown");
-    }
+      if (milestoneList.length > 0) {
+        const milestoneIds = milestoneList.map((m: any) => m.id);
 
-    if (c.freelancer_id) {
-      const { data: fp } = await supabase.from("profiles").select("full_name").eq("id", c.freelancer_id).single();
-      setFreelancerName(fp?.full_name || "Unknown");
-    }
+        const { data: allDeliverables } = await supabase
+          .from("deliverables")
+          .select("*")
+          .in("milestone_id", milestoneIds)
+          .order("order_index", { ascending: true });
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("wallet_balance, kyc_verified")
-      .eq("id", user.id)
-      .single();
-    setWalletBalance(profile?.wallet_balance || 0);
-    setKycVerified(profile?.kyc_verified ?? false);
+        const grouped: Record<string, any[]> = {};
+        (allDeliverables || []).forEach((d: any) => {
+          if (!grouped[d.milestone_id]) grouped[d.milestone_id] = [];
+          grouped[d.milestone_id].push(d);
+        });
+        setDeliverablesByMilestone(grouped);
 
-    setLoading(false);
+        // Fetch milestone submission history — ONLY when milestones exist
+        // (empty .in([]) would cause a PostgREST crash)
+        const { data: history } = await supabase
+          .from("milestone_submissions")
+          .select("*")
+          .in("milestone_id", milestoneIds)
+          .order("created_at", { ascending: false });
 
-    // Also fetch milestone history
-    const { data: history } = await supabase
-      .from("milestone_submissions")
-      .select("*")
-      .in("milestone_id", milestoneList.map((m: any) => m.id))
-      .order("created_at", { ascending: false });
+        if (history) {
+          const groupedHistory: Record<string, any[]> = {};
+          history.forEach((entry: any) => {
+            if (!groupedHistory[entry.milestone_id]) groupedHistory[entry.milestone_id] = [];
+            groupedHistory[entry.milestone_id].push(entry);
+          });
+          setMilestoneHistory(groupedHistory);
+        }
+      } else {
+        // No milestones — clear stale history
+        setMilestoneHistory({});
+        setDeliverablesByMilestone({});
+      }
 
-    if (history) {
-      const groupedHistory: Record<string, any[]> = {};
-      history.forEach((entry: any) => {
-        if (!groupedHistory[entry.milestone_id]) groupedHistory[entry.milestone_id] = [];
-        groupedHistory[entry.milestone_id].push(entry);
-      });
-      setMilestoneHistory(groupedHistory);
-    }
+      if (c.client_id) {
+        const { data: cp } = await supabase.from("profiles").select("full_name").eq("id", c.client_id).single();
+        setClientName(cp?.full_name || "Unknown");
+      }
 
-    if (c.status === 'disputed') {
+      if (c.freelancer_id) {
+        const { data: fp } = await supabase.from("profiles").select("full_name").eq("id", c.freelancer_id).single();
+        setFreelancerName(fp?.full_name || "Unknown");
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("wallet_balance, kyc_verified")
+        .eq("id", user.id)
+        .single();
+      setWalletBalance(profile?.wallet_balance || 0);
+      setKycVerified(profile?.kyc_verified ?? false);
+
+      // Fetch latest dispute regardless of status
       const { data: dData } = await supabase
         .from("disputes")
         .select("*")
         .eq("contract_id", id)
-        .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(1);
-      
+
       if (dData?.[0]) {
         setDispute(dData[0]);
         fetchDisputeMessages(dData[0].id);
+      } else {
+        setDispute(null);
+        setDisputeMessages([]);
       }
+    } catch (err: any) {
+      console.error("fetchContract error:", err);
+      toast.error("Failed to load contract. Please refresh the page.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -219,6 +228,17 @@ const ContractDetail = () => {
     const msg = newDisputeMessage;
     setNewDisputeMessage("");
 
+    // Optimistic Update: Add message locally first
+    const optimisticMsg = {
+      id: 'temp-' + Date.now(),
+      dispute_id: dispute.id,
+      user_id: user?.id,
+      message: msg,
+      created_at: new Date().toISOString(),
+      profiles: { full_name: user?.user_metadata?.full_name || user?.email || 'You' }
+    };
+    setDisputeMessages(prev => [...prev, optimisticMsg]);
+
     const { error } = await supabase.from("dispute_messages").insert({
       dispute_id: dispute.id,
       user_id: user?.id,
@@ -227,6 +247,42 @@ const ContractDetail = () => {
 
     if (error) {
       toast.error("Failed to send message: " + error.message);
+      setDisputeMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+    } else {
+      fetchDisputeMessages(dispute.id);
+
+      // --- Notify Other Parties ---
+      const myName = user?.user_metadata?.full_name || user?.email || "The other party";
+      
+      // 1. Notify the "Other" User (Client or Freelancer)
+      const otherPartyId = user?.id === contract?.client_id ? contract?.freelancer_id : contract?.client_id;
+      if (otherPartyId) {
+        await supabase.from("notifications").insert({
+          user_id: otherPartyId,
+          type: "dispute",
+          title: "New Dispute Message",
+          message: `${myName} posted a message in your dispute.`,
+          link: `/contracts/${contract?.id}`
+        });
+      }
+
+      // 2. Notify Admins
+      const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
+      if (admins && admins.length > 0) {
+        const adminNotifications = admins
+          .filter(a => a.id !== user?.id) // Don't notify self if I'm an admin
+          .map(admin => ({
+            user_id: admin.id,
+            type: "dispute",
+            title: "Dispute Activity",
+            message: `User ${myName} sent a message in Dispute #${dispute.id.substring(0,8)}`,
+            link: "/admin"
+          }));
+        
+        if (adminNotifications.length > 0) {
+          await supabase.from("notifications").insert(adminNotifications);
+        }
+      }
     }
   };
 
@@ -297,7 +353,9 @@ const ContractDetail = () => {
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "deposit",
-          message: `Client has fully funded the contract: ${contract.title}. Work can now begin!`
+          title: "Contract Funded",
+          message: `Client has fully funded the contract: ${contract.title}. Work can now begin!`,
+          link: `/contracts/${id}`
         });
       }
 
@@ -320,6 +378,7 @@ const ContractDetail = () => {
     try {
       const ms = releasingMilestone;
       if (ms.status === "completed") throw new Error("Milestone already released");
+      if (ms.status === "disputed") throw new Error("This milestone is under dispute and can only be resolved by a Pactpay Admin.");
 
       // We only update the status. The database trigger (tr_milestone_release) 
       // handles the wallet transfer and transaction recording automatically.
@@ -335,6 +394,7 @@ const ContractDetail = () => {
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "milestone_approved",
+          title: "Milestone Released",
           message: `Milestone "${ms.title || ms.name}" approved! $${ms.amount.toLocaleString()} has been released to your wallet.`,
           link: `/contracts/${contract.id}`
         });
@@ -355,6 +415,7 @@ const ContractDetail = () => {
       setFunding(false);
     }
   };
+
 
   const uploadSubmissionFile = async (file: File): Promise<string | null> => {
     const fileExt = file.name.split('.').pop();
@@ -409,6 +470,16 @@ const ContractDetail = () => {
         type: "submission",
         note: submissionNote,
         attachment_url: finalUrl
+      });
+
+      // Notify the client
+      const m = milestones.find(ms => ms.id === milestoneId);
+      await supabase.from("notifications").insert({
+        user_id: contract.client_id,
+        type: "update",
+        title: "Milestone Submitted",
+        message: `${user?.user_metadata?.full_name || 'Freelancer'} has submitted "${m?.title || m?.name}" for review.`,
+        link: `/contracts/${contract.id}`
       });
 
       toast.success("Milestone submitted for review!");
@@ -580,111 +651,6 @@ const ContractDetail = () => {
     }
   };
 
-  // Freelancer requests contract-level revision before accepting
-  const handleRequestContractRevision = async () => {
-    if (!contractRevisionNote.trim()) {
-      toast.error("Please describe what needs to be changed.");
-      return;
-    }
-    if (!contract || !user) return;
-
-    setSubmittingContractRevision(true);
-    try {
-      const { error } = await supabase
-        .from("contracts")
-        .update({ status: "revision_requested" })
-        .eq("id", contract.id);
-
-      if (error) throw error;
-
-      await supabase.from("notifications").insert({
-        user_id: contract.client_id,
-        type: "update",
-        title: "Revision Requested",
-        message: `${user?.user_metadata?.full_name || user.email} has requested changes to "${contract.title}" before accepting. Note: ${contractRevisionNote}`,
-        link: `/contracts/${contract.id}`
-      });
-
-      toast.success("Revision request sent! The client will update and re-send the contract.");
-      setShowContractRevisionDialog(false);
-      setContractRevisionNote("");
-      fetchContract();
-    } catch (err: any) {
-      toast.error("Failed to send revision request: " + err.message);
-    } finally {
-      setSubmittingContractRevision(false);
-    }
-  };
-
-  // Client re-activates invite after editing the contract following a revision request
-  const handleResendToFreelancer = async () => {
-    if (!contract) return;
-    setAccepting(true);
-    try {
-      // Reset contract status to pending
-      const { error: cError } = await supabase
-        .from("contracts")
-        .update({ status: "pending" })
-        .eq("id", contract.id);
-      if (cError) throw cError;
-
-      // Re-activate the existing invite (un-expire it) or insert a fresh one
-      if (activeInvite) {
-        await supabase
-          .from("contract_invites")
-          .update({ accepted: false, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
-          .eq("id", activeInvite.id);
-      }
-
-      // Notify the freelancer
-      if (contract.freelancer_id) {
-        await supabase.from("notifications").insert({
-          user_id: contract.freelancer_id,
-          type: "invite",
-          title: "Contract Updated — Please Review",
-          message: `${clientName} has updated the contract "${contract.title}" based on your revision request. Please review and accept.`,
-          link: `/contracts/${contract.id}`
-        });
-      }
-
-      toast.success("Contract re-sent to the freelancer for review!");
-      fetchContract();
-    } catch (err: any) {
-      toast.error("Failed to re-send contract: " + err.message);
-    } finally {
-      setAccepting(false);
-    }
-  };
-
-  // Client refuses the freelancer's revision request and cancels the contract
-  const handleRefuseRevision = async () => {
-    if (!contract) return;
-    setAccepting(true);
-    try {
-      const { error } = await supabase
-        .from("contracts")
-        .update({ status: "cancelled" })
-        .eq("id", contract.id);
-      if (error) throw error;
-
-      if (contract.freelancer_id) {
-        await supabase.from("notifications").insert({
-          user_id: contract.freelancer_id,
-          type: "update",
-          title: "Revision Refused",
-          message: `The client has decided not to proceed with revisions for "${contract.title}". The contract has been cancelled.`,
-          link: `/contracts/${contract.id}`
-        });
-      }
-
-      toast.info("Revision refused. Contract has been cancelled.");
-      fetchContract();
-    } catch (err: any) {
-      toast.error("Failed to refuse revision: " + err.message);
-    } finally {
-      setAccepting(false);
-    }
-  };
 
   const handleSubmitDispute = async () => {
     if (!disputingMilestone || !disputeReason.trim()) {
@@ -714,6 +680,18 @@ const ContractDetail = () => {
     await supabase.from("contracts").update({ status: "disputed" }).eq("id", id);
     // Mark the specific milestone as disputed
     await supabase.from("milestones").update({ status: "disputed" }).eq("id", disputingMilestone.id);
+
+    // Notify both parties about the dispute
+    const parties = [contract.client_id, contract.freelancer_id];
+    const milestoneTitle = disputingMilestone.title || disputingMilestone.name || "Milestone";
+    const notifications = parties.map(pid => ({
+      user_id: pid,
+      type: "dispute",
+      title: "Dispute Raised",
+      message: `${user?.user_metadata?.full_name || 'A party'} has raised a dispute on "${milestoneTitle}". Funds for this milestone are now frozen.`,
+      link: `/contracts/${id}`
+    }));
+    await supabase.from("notifications").insert(notifications);
 
     // Non-blocking email attempt
     supabase.functions.invoke("send-email", {
@@ -760,7 +738,7 @@ const ContractDetail = () => {
           type: "invite",
           title: "New Contract Invite",
           message: `You have been invited to a new contract: ${contract.title}`,
-          link: invite ? `/invite/${invite.token}` : `/contracts/${id}`
+          link: `/contracts/${id}`
         });
 
         // 4. Trigger email as backup
@@ -890,16 +868,7 @@ const ContractDetail = () => {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="hero" size="lg" onClick={handleAcceptInvite} disabled={accepting || !kycVerified}>
-                  {accepting ? "Accepting..." : "Accept & Start Workspace"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  onClick={() => setShowContractRevisionDialog(true)}
-                  disabled={accepting}
-                  className="border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                >
-                  <MessageSquarePlus className="mr-2 h-4 w-4" /> Request Revision
+                  {accepting ? "Accept & Start Workspace" : "Accept & Start Workspace"}
                 </Button>
                 <Button variant="ghost" size="lg" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
                   Decline
@@ -912,91 +881,11 @@ const ContractDetail = () => {
               </p>
             )}
 
-            {/* Inline revision dialog for freelancer */}
-            {showContractRevisionDialog && (
-              <div className="mt-4 border-t border-amber-500/30 pt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                <p className="text-sm font-medium text-amber-400 flex items-center gap-2">
-                  <MessageSquarePlus className="h-4 w-4" />
-                  Describe what needs to be changed
-                </p>
-                <textarea
-                  className="w-full rounded-lg border border-amber-500/30 bg-background/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/50 resize-none"
-                  rows={3}
-                  placeholder="e.g. Please increase the budget for Milestone 2, or adjust the deadline..."
-                  value={contractRevisionNote}
-                  onChange={(e) => setContractRevisionNote(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => { setShowContractRevisionDialog(false); setContractRevisionNote(""); }} disabled={submittingContractRevision}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" className="flex-1 bg-amber-500 hover:bg-amber-600 text-white" onClick={handleRequestContractRevision} disabled={submittingContractRevision || !contractRevisionNote.trim()}>
-                    {submittingContractRevision ? "Sending..." : "Send Revision Request"}
-                  </Button>
-                </div>
-              </div>
-            )}
+
           </div>
         )}
 
-        {/* Freelancer view: revision request already sent, awaiting client update */}
-        {contract.status === "revision_requested" && isFreelancer && (
-          <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm">
-            <div className="flex items-start gap-3">
-              <MessageSquarePlus className="h-5 w-5 text-amber-400 shrink-0 mt-1" />
-              <div>
-                <h2 className="text-lg font-bold text-amber-400">Revision Request Sent</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Your revision request has been sent to {clientName}. Once they update the contract, you'll receive a notification to review and accept.
-                </p>
-                <div className="flex gap-2 mt-4">
-                  <Button size="sm" variant="outline" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
-                    <XCircle className="mr-1 h-4 w-4" /> Decline & Cancel
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Client view: freelancer requested a revision */}
-        {contract.status === "revision_requested" && isClient && (
-          <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-              <div className="flex items-start gap-3">
-                <MessageSquarePlus className="h-5 w-5 text-amber-400 shrink-0 mt-1" />
-                <div>
-                  <h2 className="text-lg font-bold text-amber-400">Revision Requested by Freelancer</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {freelancerName || "The freelancer"} has requested changes to this contract before accepting. 
-                    Edit the contract to accommodate their request, then re-send it. Or refuse the revision to cancel.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 shrink-0">
-                <Button
-                  variant="hero"
-                  size="sm"
-                  onClick={handleResendToFreelancer}
-                  disabled={accepting}
-                  className="gap-2"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  {accepting ? "Sending..." : "Re-send to Freelancer"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRefuseRevision}
-                  disabled={accepting}
-                  className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                >
-                  <XCircle className="mr-1 h-4 w-4" /> Refuse Revision
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="mb-8">
           <Button 
@@ -1107,65 +996,162 @@ const ContractDetail = () => {
                   <Badge variant="destructive" className="animate-pulse">Active Dispute</Badge>
                 </div>
 
-                <div className="bg-background/40 rounded-xl border border-border overflow-hidden flex flex-col h-[400px]">
-                   <div className="p-3 bg-muted/30 border-b border-border">
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase">Dispute Reason</p>
-                      <p className="text-sm italic mt-1">"{dispute.reason}"</p>
-                   </div>
-
-                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                      {disputeMessages.length === 0 ? (
-                        <div className="py-12 text-center opacity-50">
-                           <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                           <p className="text-sm">No messages yet. Drop a message to the admin.</p>
-                        </div>
-                      ) : (
-                        disputeMessages.map((msg) => {
-                          const isMe = msg.user_id === user?.id;
-                          const isAdminReply = msg.is_admin_reply;
+                <div className="glass-card flex flex-col h-[600px] border-amber-500/20 bg-amber-500/5 relative overflow-hidden">
+                  <div className="absolute top-4 right-4 z-20">
+                     <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 shadow-sm border border-amber-500/20">
+                             <Maximize2 className="h-4 w-4" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[900px] h-[90vh] flex flex-col p-0 overflow-hidden bg-card/95 backdrop-blur-xl border-amber-500/20 shadow-2xl">
+                          <div className="px-6 py-4 border-b border-border bg-amber-500/5 flex items-center justify-between">
+                            <div>
+                              <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                                <MessageSquare className="h-5 w-5 text-amber-500" />
+                                Dispute Resolution Center
+                              </DialogTitle>
+                              <DialogDescription className="text-xs text-muted-foreground mt-1">
+                                Immersive mediation mode for Dispute #{dispute.id.substring(0,8)}
+                              </DialogDescription>
+                            </div>
+                          </div>
                           
-                          return (
-                            <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
-                              <div className="flex items-center gap-1.5 mb-1 px-1">
-                                <span className={cn("text-[10px] font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
-                                  {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
-                                </span>
-                                <span className="text-[9px] text-muted-foreground/50">
-                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                              <div className={cn(
-                                "max-w-[85%] rounded-2xl px-4 py-2 text-sm",
-                                isMe ? "bg-primary text-white rounded-tr-none" : 
-                                isAdminReply ? "bg-amber-500/10 text-foreground border border-amber-500/20 rounded-tl-none" :
-                                "bg-card text-foreground border border-border rounded-tl-none"
-                              )}>
-                                {msg.message}
+                          <div className="flex-1 flex overflow-hidden">
+                            {/* Sidebar with Context */}
+                            <div className="w-64 border-r border-border p-6 bg-muted/20 hidden md:block">
+                              <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">Dispute Context</h4>
+                              <div className="space-y-4">
+                                <div>
+                                  <p className="text-[10px] text-muted-foreground uppercase">Contract</p>
+                                  <p className="text-sm font-semibold">{contract.title}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] text-muted-foreground uppercase">Reason</p>
+                                  <p className="text-xs italic mt-1 text-muted-foreground/80">"{dispute.reason}"</p>
+                                </div>
                               </div>
                             </div>
-                          );
-                        })
-                      )}
-                      <div ref={messagesEndRef} />
-                   </div>
 
-                   <form onSubmit={handleSendDisputeMessage} className="p-3 bg-background border-t border-border flex gap-2">
-                      <Input 
-                        placeholder="Type a message to the admin..." 
-                        className="flex-1 h-9 text-sm"
-                        value={newDisputeMessage}
-                        onChange={(e) => setNewDisputeMessage(e.target.value)}
-                      />
-                      <Button type="submit" size="icon" className="h-9 w-9" disabled={!newDisputeMessage.trim()}>
-                        <Send className="h-4 w-4" />
-                      </Button>
-                   </form>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-3 text-center italic">
-                   This conversation is visible to the Client, Freelancer, and Pactpay Administration.
-                </p>
-              </div>
-            )}
+                            {/* Chat Area */}
+                            <div className="flex-1 flex flex-col h-full bg-background/50">
+                              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                                 {disputeMessages.map((msg) => {
+                                   const isMe = msg.user_id === user?.id;
+                                   const isAdminReply = msg.is_admin_reply;
+                                   return (
+                                     <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-left-2")}>
+                                       <div className="flex items-center gap-2 mb-1.5 px-1">
+                                         <span className={cn("text-xs font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
+                                           {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                         </span>
+                                         <span className="text-[10px] text-muted-foreground/40 font-medium">
+                                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                         </span>
+                                       </div>
+                                       <div className={cn(
+                                         "max-w-[80%] rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm",
+                                         isMe ? "bg-primary text-white rounded-tr-none shadow-primary/10" : 
+                                         isAdminReply ? "bg-amber-500/10 text-foreground border border-amber-500/20 rounded-tl-none" :
+                                         "bg-card text-foreground border border-border rounded-tl-none shadow-black/5"
+                                       )}>
+                                         {msg.message}
+                                       </div>
+                                     </div>
+                                   );
+                                 })}
+                                 <div ref={messagesEndRef} />
+                              </div>
+                              <form onSubmit={handleSendDisputeMessage} className="p-4 bg-card border-t border-border flex gap-3">
+                                 <Input 
+                                   placeholder="Type a message to the mediation team..." 
+                                   className="flex-1 h-11 bg-background/50 border-border focus:border-primary/50 transition-all shadow-inner"
+                                   value={newDisputeMessage}
+                                   onChange={(e) => setNewDisputeMessage(e.target.value)}
+                                 />
+                                 <Button type="submit" size="icon" className="h-11 w-11 shadow-lg shadow-primary/20" disabled={!newDisputeMessage.trim()}>
+                                   <Send className="h-5 w-5" />
+                                 </Button>
+                              </form>
+                            </div>
+                          </div>
+                        </DialogContent>
+                     </Dialog>
+                  </div>
+
+                  <div className="p-3 bg-muted/30 border-b border-border flex justify-between items-center pr-16">
+                     <div>
+                       <p className="text-[10px] text-muted-foreground font-bold uppercase">Disputed Milestone</p>
+                       <p className="text-sm font-semibold mt-0.5">
+                         {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "N/A"}
+                       </p>
+                     </div>
+                     <div className="text-right">
+                       <p className="text-[10px] text-muted-foreground font-bold uppercase">Locked Amount</p>
+                       <p className="text-sm font-bold text-amber-500 mt-0.5">
+                         ${milestones.find(m => m.id === dispute.milestone_id)?.amount?.toLocaleString()}
+                       </p>
+                     </div>
+                  </div>
+
+                  <div className="p-4 border-b border-border bg-amber-500/[0.03]">
+                     <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1">Dispute Reason</p>
+                     <p className="text-xs italic mt-1 text-foreground/80">"{dispute.reason}"</p>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-background/20">
+                     {disputeMessages.length === 0 ? (
+                       <div className="py-12 text-center opacity-50">
+                          <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p className="text-sm">No messages yet. Drop a message to the admin.</p>
+                       </div>
+                     ) : (
+                       disputeMessages.map((msg) => {
+                         const isMe = msg.user_id === user?.id;
+                         const isAdminReply = msg.is_admin_reply;
+                         
+                         return (
+                           <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-bottom-1")}>
+                             <div className="flex items-center gap-1.5 mb-1 px-1">
+                               <span className={cn("text-[10px] font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
+                                 {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                               </span>
+                               <span className="text-[9px] text-muted-foreground/50">
+                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                               </span>
+                             </div>
+                             <div className={cn(
+                               "max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-sm",
+                               isMe ? "bg-primary text-white rounded-tr-none" : 
+                               isAdminReply ? "bg-amber-500/10 text-foreground border border-amber-500/20 rounded-tl-none" :
+                               "bg-card text-foreground border border-border rounded-tl-none"
+                             )}>
+                               {msg.message}
+                             </div>
+                           </div>
+                         );
+                       })
+                     )}
+                     <div ref={messagesEndRef} />
+                  </div>
+
+                  <form onSubmit={handleSendDisputeMessage} className="p-3 bg-card border-t border-border flex gap-2">
+                     <Input 
+                       placeholder="Type a message to the admin..." 
+                       className="flex-1 h-9 text-sm bg-background/50"
+                       value={newDisputeMessage}
+                       onChange={(e) => setNewDisputeMessage(e.target.value)}
+                     />
+                     <Button type="submit" size="icon" className="h-9 w-9" disabled={!newDisputeMessage.trim()}>
+                       <Send className="h-4 w-4" />
+                     </Button>
+                  </form>
+               </div>
+               <p className="text-[10px] text-muted-foreground mt-3 text-center italic">
+                  This conversation is visible to the Client, Freelancer, and Pactpay Administration.
+               </p>
+             </div>
+           )}
 
             <div className="glass-card p-5">
               <h3 className="mb-4 font-semibold text-foreground">Milestones</h3>
@@ -1336,7 +1322,7 @@ const ContractDetail = () => {
 
                           {(isClient || isFreelancer) &&
                             ["pending", "in_review", "revision"].includes(m.status) &&
-                            contract.status === "active" && (
+                            contract.status === "active" && m.status !== "disputed" && (
                               <Button size="sm" variant="destructive" onClick={() => setDisputingMilestone(m)}>
                                 Raise Dispute
                               </Button>
@@ -1493,6 +1479,153 @@ const ContractDetail = () => {
                 </div>
               )}
             </div>
+ 
+            <div className="glass-card flex flex-col border-amber-500/20 bg-amber-500/[0.02] relative overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-amber-500/5 flex justify-between items-center">
+                   <h3 className="text-xs font-bold text-foreground flex items-center gap-2">
+                     <ShieldAlert className="h-3 w-3 text-amber-500" />
+                     Mediation Center
+                   </h3>
+                </div>
+
+                <div className="p-4 space-y-3">
+                   {!dispute ? (
+                     <div className="py-4 text-center">
+                        <CheckCircle className="h-8 w-8 text-green-500/20 mx-auto mb-2" />
+                        <p className="text-[10px] text-muted-foreground italic">No disputes recorded for this contract.</p>
+                     </div>
+                   ) : (
+                     <div className="space-y-2">
+                        <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 transition-colors cursor-pointer group">
+                           <Dialog>
+                              <DialogTrigger asChild>
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter mb-1">
+                                      Dispute #{dispute.id.substring(0,8)}
+                                    </p>
+                                    <p className="text-xs font-semibold text-foreground line-clamp-1">
+                                      {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "General Dispute"}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 italic">
+                                      "{dispute.reason}"
+                                    </p>
+                                  </div>
+                                  <div className="text-right flex flex-col items-end gap-2">
+                                    <Badge variant="outline" className={cn(
+                                      "text-[8px] h-3.5 px-1.5 font-bold uppercase",
+                                      dispute.status === 'open' ? "bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse" : 
+                                      "bg-green-500/10 text-green-500 border-green-500/20"
+                                    )}>
+                                      {dispute.status || 'RESOLVED'}
+                                    </Badge>
+                                    <Maximize2 className="h-3 w-3 text-muted-foreground group-hover:text-amber-500 transition-colors" />
+                                  </div>
+                                </div>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[900px] h-[90vh] flex flex-col p-0 overflow-hidden bg-card/95 backdrop-blur-xl border-amber-500/20 shadow-2xl">
+                                <div className="px-6 py-4 border-b border-border bg-amber-500/5 flex items-center justify-between">
+                                  <div>
+                                    <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                                      <MessageSquare className="h-5 w-5 text-amber-500" />
+                                      Dispute Resolution Center
+                                    </DialogTitle>
+                                    <DialogDescription className="text-xs text-muted-foreground mt-1">
+                                      {dispute.status === 'open' ? 'Active mediation session' : 'Archived mediation transcript'} for Dispute #{dispute.id.substring(0,8)}
+                                    </DialogDescription>
+                                  </div>
+                                  <Badge variant="outline" className={cn(
+                                    "font-bold",
+                                    dispute.status === 'open' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : 
+                                    "bg-green-500/10 text-green-500 border-green-500/20"
+                                  )}>
+                                    {dispute.status?.toUpperCase() || 'RESOLVED'}
+                                  </Badge>
+                                </div>
+                                
+                                <div className="flex-1 flex overflow-hidden">
+                                  <div className="w-64 border-r border-border p-6 bg-muted/20 hidden md:block">
+                                    <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">Dispute Context</h4>
+                                    <div className="space-y-4">
+                                      <div>
+                                        <p className="text-[10px] text-muted-foreground uppercase">Contract</p>
+                                        <p className="text-sm font-semibold">{contract.title}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[10px] text-muted-foreground uppercase">Reason</p>
+                                        <p className="text-xs italic mt-1 text-muted-foreground/80">"{dispute.reason}"</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[10px] text-muted-foreground uppercase">Milestone</p>
+                                        <p className="text-xs font-medium">
+                                          {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "N/A"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex-1 flex flex-col h-full bg-background/50">
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                                       {disputeMessages.map((msg) => {
+                                         const isMe = msg.user_id === user?.id;
+                                         const isAdminReply = msg.is_admin_reply;
+                                         return (
+                                           <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-left-2")}>
+                                             <div className="flex items-center gap-2 mb-1.5 px-1">
+                                               <span className={cn("text-xs font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
+                                                 {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                               </span>
+                                               <span className="text-[10px] text-muted-foreground/40 font-medium">
+                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                               </span>
+                                             </div>
+                                             <div className={cn(
+                                               "max-w-[80%] rounded-2xl px-5 py-3 text-sm leading-relaxed shadow-sm",
+                                               isMe ? "bg-primary text-white rounded-tr-none shadow-primary/10" : 
+                                               isAdminReply ? "bg-amber-500/10 text-foreground border border-amber-500/20 rounded-tl-none" :
+                                               "bg-card text-foreground border border-border rounded-tl-none shadow-black/5"
+                                             )}>
+                                               {msg.message}
+                                             </div>
+                                           </div>
+                                         );
+                                       })}
+                                       <div ref={messagesEndRef} />
+                                    </div>
+                                    {dispute.status === 'open' ? (
+                                      <form onSubmit={handleSendDisputeMessage} className="p-4 bg-card border-t border-border flex gap-3">
+                                         <Input 
+                                           placeholder="Type a message to the mediation team..." 
+                                           className="flex-1 h-11 bg-background/50 border-border focus:border-primary/50 transition-all shadow-inner"
+                                           value={newDisputeMessage}
+                                           onChange={(e) => setNewDisputeMessage(e.target.value)}
+                                         />
+                                         <Button type="submit" size="icon" className="h-11 w-11 shadow-lg shadow-primary/20" disabled={!newDisputeMessage.trim()}>
+                                           <Send className="h-5 w-5" />
+                                         </Button>
+                                      </form>
+                                    ) : (
+                                      <div className="p-4 bg-muted/30 border-t border-border text-center">
+                                         <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                                           Chat is read-only — Dispute Resolved
+                                         </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </DialogContent>
+                           </Dialog>
+                        </div>
+                     </div>
+                   )}
+                </div>
+                
+                <div className="px-4 py-2 bg-amber-500/5 border-t border-border">
+                   <p className="text-[9px] text-muted-foreground text-center">
+                      Secure mediation is powered by Pactpay Escrow Services.
+                   </p>
+                </div>
+              </div>
 
             {isClient && !isFunded && ["pending", "draft"].includes(contract.status) && (
               <div className="pt-2">
@@ -1579,38 +1712,7 @@ const ContractDetail = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Dispute Modal */}
-      <Dialog open={!!disputingMilestone} onOpenChange={(open) => !open && setDisputingMilestone(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Raise a Dispute</DialogTitle>
-            <DialogDescription>
-              Provide the reason for the dispute. The escrowed funds will be frozen until the admin intervenes.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <span className="text-xs text-muted-foreground uppercase">Milestone</span>
-              <p className="font-medium">{disputingMilestone?.title || disputingMilestone?.name}</p>
-            </div>
-            <div className="space-y-2">
-              <span className="text-xs text-muted-foreground uppercase">Reason</span>
-              <Textarea
-                placeholder="Explain the issue clearly..."
-                value={disputeReason}
-                onChange={(e) => setDisputeReason(e.target.value)}
-                className="min-h-[120px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDisputingMilestone(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleSubmitDispute} disabled={submittingDispute}>
-              {submittingDispute ? "Submitting..." : "Freeze Funds & Raise Dispute"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Revision Dialog */}
       <Dialog open={!!requestingRevision} onOpenChange={(open) => !open && setRequestingRevision(null)}>
         <DialogContent>
           <DialogHeader>

@@ -15,7 +15,7 @@ import {
   Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle,
   Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical,
   Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
-  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare, MessageSquareText
+  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare, MessageSquareText, Bell
 } from "lucide-react";
 import {
   Select,
@@ -78,12 +78,57 @@ export default function AdminDashboard() {
   const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
   const [newDisputeReply, setNewDisputeReply] = useState("");
 
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   useEffect(() => {
     if (!authLoading) {
       if (!user) navigate("/auth");
       else checkAdmin();
     }
   }, [user, authLoading]);
+
+  // Admin Notification Listener
+  useEffect(() => {
+    if (isAdmin && user) {
+      fetchNotifications();
+      
+      const channel = supabase
+        .channel('admin-notifications')
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        }, (payload) => {
+          setNotifications(prev => [payload.new, ...prev].slice(0, 5));
+          setUnreadCount(prev => prev + 1);
+          // Optional: Re-fetch full list or just push the new one
+        })
+        .subscribe();
+
+      return () => { supabase.removeChannel(channel); };
+    }
+  }, [isAdmin, user]);
+
+  const fetchNotifications = async () => {
+    const { data, count } = await supabase
+      .from("notifications")
+      .select("*", { count: 'exact' })
+      .eq("user_id", user?.id)
+      .eq("is_read", false)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    
+    setNotifications(data || []);
+    setUnreadCount(count || 0);
+  };
+
+  const markAllAsRead = async () => {
+    await supabase.from("notifications").update({ is_read: true }).eq("user_id", user?.id);
+    setNotifications([]);
+    setUnreadCount(0);
+  };
 
   const checkAdmin = async () => {
     try {
@@ -131,7 +176,6 @@ export default function AdminDashboard() {
       setTransactions(tRes.data || []);
       setMilestones(mRes.data || []);
       setTickets(tickRes.data || []);
-      // Don't auto-select — let admin choose
 
     } catch (err: any) {
       console.error("Failed to fetch admin data:", err);
@@ -139,6 +183,14 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Derived Stats for Command Center
+  const stats = {
+    pendingKYCs: users.filter(u => u.kyc_status === 'pending').length,
+    openDisputes: disputes.filter(d => d.status === 'open').length,
+    pendingWithdrawals: transactions.filter(t => t.type === 'withdrawal' && t.metadata?.status === 'pending').length,
+    unreadTickets: tickets.filter(t => t.status === 'open').length,
   };
 
   const fetchAdminMessages = async (ticketId: string) => {
@@ -264,59 +316,142 @@ export default function AdminDashboard() {
     const msg = newDisputeReply;
     setNewDisputeReply("");
 
-    await supabase.from("dispute_messages").insert({
+    // Optimistic Update
+    const optimisticMsg = {
+      id: 'temp-' + Date.now(),
+      dispute_id: selectedAdminDispute.id,
+      user_id: user?.id,
+      message: msg,
+      is_admin_reply: true,
+      created_at: new Date().toISOString(),
+      profiles: { full_name: 'Pactpay Admin' }
+    };
+    setDisputeMessages(prev => [...prev, optimisticMsg]);
+
+    const { error } = await supabase.from("dispute_messages").insert({
       dispute_id: selectedAdminDispute.id,
       user_id: user?.id,
       message: msg,
       is_admin_reply: true
     });
+
+    if (error) {
+      toast.error("Failed to send reply: " + error.message);
+      setDisputeMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+    } else {
+      // Re-fetch to get real data
+      fetchDisputeMessages(selectedAdminDispute.id);
+    }
+
+    // Notify both parties
+    const contract = contracts.find(c => c.id === selectedAdminDispute.contract_id);
+    if (contract) {
+      const parties = [contract.client_id, contract.freelancer_id].filter(Boolean);
+      const notifications = parties.map(pid => ({
+        user_id: pid,
+        title: "Dispute Update",
+        message: "The Pactpay Admin has posted a message in the Dispute Resolution Center.",
+        type: "system",
+        link: `/contracts/${contract.id}`
+      }));
+      
+      const { error: nError } = await supabase.from("notifications").insert(notifications);
+      if (nError) {
+        console.error("❌ Notification Insert Error:", nError);
+        toast.error("Message sent, but failed to notify parties: " + nError.message);
+      } else {
+        console.log("✅ Parties notified successfully:", parties);
+      }
+    } else {
+      console.warn("⚠️ Could not find contract for notification:", selectedAdminDispute.contract_id);
+    }
   };
 
   const handleResolveDispute = async (disputeId: string, resolution: "release" | "refund") => {
+    if (!selectedAdminDispute) return;
     setResolving(true);
+    
     try {
+      // 1. Fetch fresh data for the resolution
       const { data: dispute } = await supabase.from("disputes").select("*").eq("id", disputeId).single();
-      if (!dispute || dispute.status === "resolved") throw new Error("Dispute invalid or already resolved");
+      if (!dispute || dispute.status === "resolved") throw new Error("Dispute already resolved or not found.");
 
       const { data: ms } = await supabase.from("milestones").select("*").eq("id", dispute.milestone_id).single();
       const { data: contract } = await supabase.from("contracts").select("*").eq("id", dispute.contract_id).single();
+      
+      if (!ms || !contract) throw new Error("Related contract or milestone data is missing.");
 
+      // 2. Perform the financial resolution
       if (resolution === "release") {
-        const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.freelancer_id).single();
-        await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.freelancer_id);
-        await supabase.from("transactions").insert({
-          type: "release", amount: ms.amount, to_user_id: contract.freelancer_id, metadata: { note: "Dispute resolved in favor of freelancer" }
-        });
-        await supabase.from("milestones").update({ status: "completed" }).eq("id", ms.id);
-        await supabase.from("notifications").insert({
-          user_id: contract.freelancer_id, type: "system", message: `Dispute resolved! Funds for "${ms.name}" released to your wallet.`
-        });
-      } else if (resolution === "refund") {
+        const { error: msError } = await supabase
+          .from("milestones")
+          .update({ status: "completed", released_at: new Date().toISOString() })
+          .eq("id", ms.id);
+        if (msError) throw msError;
+      } else {
+        // Refund logic
         const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.client_id).single();
-        await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.client_id);
+        const { error: walletErr } = await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.client_id);
+        if (walletErr) throw walletErr;
+
         await supabase.from("transactions").insert({
-          type: "refund", amount: ms.amount, to_user_id: contract.client_id, metadata: { note: "Dispute refunded" }
+          type: "refund",
+          amount: ms.amount,
+          to_user_id: contract.client_id,
+          from_user_id: contract.freelancer_id,
+          metadata: { contract_id: contract.id, milestone_id: ms.id, note: "Dispute refunded to client" }
         });
         await supabase.from("milestones").update({ status: "cancelled" }).eq("id", ms.id);
-        await supabase.from("notifications").insert({
-          user_id: contract.client_id, type: "system", message: `Dispute resolved! Funds for "${ms.name}" refunded to your wallet.`
-        });
       }
 
-      await supabase.from("disputes").update({ status: "resolved", resolution_notes: resolution }).eq("id", dispute.id);
+      // 3. IMMEDIATELY mark the dispute as resolved in the DB
+      const { error: disputeErr } = await supabase
+        .from("disputes")
+        .update({ 
+          status: "resolved", 
+          resolution_notes: `Admin resolved: ${resolution}` 
+        })
+        .eq("id", disputeId);
+      
+      if (disputeErr) throw disputeErr;
 
-      const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract.id);
-      const allCompletedOrCancelled = allMs?.every((m: any) => m.status === "completed" || m.status === "cancelled");
-      if (allCompletedOrCancelled) {
-        await supabase.from("contracts").update({ status: "completed" }).eq("id", contract.id);
-      } else {
-        await supabase.from("contracts").update({ status: "active" }).eq("id", contract.id);
+      // 4. Secondary Updates (Notifications & Contract Status)
+      // These are important but shouldn't block the UI if they hit a snag
+      try {
+        // Update contract status
+        const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract.id);
+        const allDone = allMs?.every((m: any) => m.status === "completed" || m.status === "cancelled");
+        await supabase.from("contracts").update({ status: allDone ? "completed" : "active" }).eq("id", contract.id);
+
+        // Notify parties
+        const participants = [
+          { id: contract.freelancer_id, title: "Dispute Resolved", msg: `Dispute resolved for "${ms.title || ms.name}". Funds ${resolution === 'release' ? 'released to you' : 'refunded to client'}.` },
+          { id: contract.client_id, title: "Dispute Resolved", msg: `The dispute for "${ms.title || ms.name}" has been resolved via ${resolution}.` }
+        ];
+
+        for (const p of participants) {
+          if (p.id) {
+            await supabase.from("notifications").insert({
+              user_id: p.id,
+              type: "system",
+              title: p.title,
+              message: p.msg,
+              link: `/contracts/${contract.id}`
+            });
+          }
+        }
+      } catch (secondaryErr) {
+        console.error("Secondary resolution updates failed:", secondaryErr);
       }
 
-      toast.success(`Dispute resolved! Funds ${resolution === "release" ? "released to freelancer" : "refunded to client"}.`);
+      // 5. Finalize UI
+      toast.success(`Dispute resolved successfully via ${resolution}.`);
+      setSelectedAdminDispute(null);
       fetchAllData();
+
     } catch (err: any) {
-      toast.error(`Failed to resolve dispute: ${err.message}`);
+      console.error("Dispute resolution failed:", err);
+      toast.error(`Resolution failed: ${err.message}`);
     } finally {
       setResolving(false);
     }
@@ -506,19 +641,157 @@ export default function AdminDashboard() {
       <DashboardNavbar />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-10">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
               <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
               <p className="text-muted-foreground mt-1">Platform overview and high-level system management</p>
             </div>
-            <Button
-              variant="hero"
-              onClick={handleFeePayout}
-              className="gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
-              disabled={netEarnings <= 0}
+            
+            <div className="flex items-center gap-4">
+              {/* Admin Notification Bell */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative hover:bg-primary/10 transition-colors h-11 w-11 rounded-full border border-border/50">
+                    <Bell className="h-5 w-5 text-muted-foreground" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white border-2 border-background shadow-lg">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 p-0 overflow-hidden bg-card/95 backdrop-blur-xl border-primary/20 shadow-2xl">
+                  <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Admin Alerts</span>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllAsRead} className="text-[10px] font-bold text-primary hover:underline">
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  <DropdownMenuSeparator className="m-0" />
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="py-12 text-center space-y-3">
+                        <div className="mx-auto h-12 w-12 rounded-full bg-muted/30 flex items-center justify-center">
+                          <Bell className="h-6 w-6 text-muted-foreground/30" />
+                        </div>
+                        <p className="text-xs text-muted-foreground font-medium">No new alerts</p>
+                      </div>
+                    ) : (
+                      notifications.map((n) => (
+                        <DropdownMenuItem 
+                          key={n.id} 
+                          className="flex flex-col items-start p-4 gap-1 cursor-pointer border-b last:border-0 hover:bg-muted/30 focus:bg-muted/30 outline-none"
+                          onSelect={() => {
+                            if (n.link) {
+                              if (n.link === "/admin") {
+                                // Already here, maybe just switch tab?
+                                if (n.type === "dispute") setActiveTab("disputes");
+                                else if (n.type === "support") setActiveTab("support");
+                              } else {
+                                navigate(n.link);
+                              }
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">{n.type}</span>
+                            <span className="text-[10px] text-muted-foreground italic">just now</span>
+                          </div>
+                          <span className="text-xs font-bold text-foreground line-clamp-1">{n.title || 'System Alert'}</span>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{n.message}</p>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                variant="hero"
+                onClick={handleFeePayout}
+                className="gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 h-11"
+                disabled={netEarnings <= 0}
+              >
+                <TrendingUp className="h-4 w-4" /> Withdraw Platform Fees
+              </Button>
+            </div>
+          </div>
+
+          {/* ACTION REQUIRED: Admin Command Center */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div 
+              className={cn(
+                "p-4 rounded-xl border transition-all cursor-pointer",
+                stats.openDisputes > 0 ? "bg-destructive/5 border-destructive/20 hover:bg-destructive/10" : "bg-muted/10 border-border"
+              )}
+              onClick={() => setActiveTab("disputes")}
             >
-              <TrendingUp className="h-4 w-4" /> Withdraw Platform Fees
-            </Button>
+              <div className="flex items-center gap-3">
+                <div className={cn("p-2 rounded-lg", stats.openDisputes > 0 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground")}>
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Open Disputes</p>
+                  <p className="text-xl font-bold">{stats.openDisputes}</p>
+                </div>
+              </div>
+            </div>
+
+            <div 
+              className={cn(
+                "p-4 rounded-xl border transition-all cursor-pointer",
+                stats.pendingKYCs > 0 ? "bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10" : "bg-muted/10 border-border"
+              )}
+              onClick={() => setActiveTab("users")}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn("p-2 rounded-lg", stats.pendingKYCs > 0 ? "bg-amber-500/20 text-amber-500" : "bg-muted text-muted-foreground")}>
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">KYC Pending</p>
+                  <p className="text-xl font-bold">{stats.pendingKYCs}</p>
+                </div>
+              </div>
+            </div>
+
+            <div 
+              className={cn(
+                "p-4 rounded-xl border transition-all cursor-pointer",
+                stats.pendingWithdrawals > 0 ? "bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10" : "bg-muted/10 border-border"
+              )}
+              onClick={() => setActiveTab("transactions")}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn("p-2 rounded-lg", stats.pendingWithdrawals > 0 ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground")}>
+                  <ArrowRightLeft className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Pending Payouts</p>
+                  <p className="text-xl font-bold">{stats.pendingWithdrawals}</p>
+                </div>
+              </div>
+            </div>
+
+            <div 
+              className={cn(
+                "p-4 rounded-xl border transition-all cursor-pointer",
+                stats.unreadTickets > 0 ? "bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10" : "bg-muted/10 border-border"
+              )}
+              onClick={() => setActiveTab("support")}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn("p-2 rounded-lg", stats.unreadTickets > 0 ? "bg-blue-500/20 text-blue-500" : "bg-muted text-muted-foreground")}>
+                  <MessageSquareText className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Support Needed</p>
+                  <p className="text-xl font-bold">{stats.unreadTickets}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* NEW Stats Overview Grid */}

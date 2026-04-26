@@ -102,7 +102,13 @@ const WithdrawModal = ({ isOpen, onClose, walletBalance, kycVerified, userId, ba
             <p>No valid bank account found. Please update your bank details in your profile before withdrawing.</p>
           </div>
         ) : (
-          <div className="space-y-6 py-4">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleWithdraw();
+            }}
+            className="space-y-6 py-4"
+          >
             <div className="rounded-lg bg-card-elevated p-4 border border-border/50 flex flex-col items-center justify-center space-y-1">
               <span className="text-sm text-muted-foreground">Available Balance</span>
               <span className="text-3xl font-bold text-foreground">
@@ -123,6 +129,7 @@ const WithdrawModal = ({ isOpen, onClose, walletBalance, kycVerified, userId, ba
                   onChange={(e) => setAmount(e.target.value)}
                   max={walletBalance}
                   min={1}
+                  autoFocus
                 />
               </div>
             </div>
@@ -141,23 +148,24 @@ const WithdrawModal = ({ isOpen, onClose, walletBalance, kycVerified, userId, ba
                 <div className="font-medium text-foreground text-right">••••{bankDetails.accountNumber?.slice(-4) || '****'}</div>
               </div>
             </div>
-          </div>
-        )}
 
-        <DialogFooter className="sm:justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button 
-            variant="hero" 
-            onClick={handleWithdraw} 
-            disabled={!kycVerified || !hasBankDetails || loading || !amount || Number(amount) <= 0 || Number(amount) > walletBalance}
-          >
-            {loading ? "Processing..." : "Confirm Withdrawal"}
-          </Button>
-        </DialogFooter>
+            <DialogFooter className="px-0 sm:justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                variant="hero" 
+                disabled={!kycVerified || !hasBankDetails || loading || !amount || Number(amount) <= 0 || Number(amount) > walletBalance}
+              >
+                {loading ? "Processing..." : "Confirm Withdrawal"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
+
   );
 };
 

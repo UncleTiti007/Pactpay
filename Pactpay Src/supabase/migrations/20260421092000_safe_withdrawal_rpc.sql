@@ -62,12 +62,10 @@ BEGIN
   INSERT INTO public.notifications (
     user_id,
     type,
-    title,
     message
   ) VALUES (
     p_user_id,
     'withdrawal_pending',
-    'Withdrawal Pending',
     'Your withdrawal request for $' || TO_CHAR(p_amount, 'FM999,999,990.00') || ' has been received and is pending approval.'
   );
 

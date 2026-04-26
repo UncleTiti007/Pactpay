@@ -228,11 +228,17 @@ const CreateContract = () => {
 
             {/* Step 1 */}
             {step === 1 && (
-              <div className="glass-card space-y-5 p-6">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (canProceedStep1) setStep(2);
+                }}
+                className="glass-card space-y-5 p-6"
+              >
                 <h2 className="text-lg font-semibold text-foreground">Contract Basics</h2>
                 <div>
                   <Label htmlFor="title">Contract title <span className="text-destructive">*</span></Label>
-                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" required />
+                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" required autoFocus />
                 </div>
                 <div>
                   <Label htmlFor="description">Scope of work <span className="text-destructive">*</span></Label>
@@ -295,16 +301,22 @@ const CreateContract = () => {
                   <p className="mt-1 text-xs text-muted-foreground">Search by name or type their email to invite them</p>
                 </div>
                 <div className="flex justify-end">
-                  <Button variant="hero" onClick={() => setStep(2)} disabled={!canProceedStep1}>
+                  <Button type="submit" variant="hero" disabled={!canProceedStep1}>
                     Next <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>
-              </div>
+              </form>
             )}
 
             {/* Step 2 */}
             {step === 2 && (
-              <div className="glass-card space-y-5 p-6">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (canProceedStep2 && totalsMatch) setStep(3);
+                }}
+                className="glass-card space-y-5 p-6"
+              >
                 <h2 className="text-lg font-semibold text-foreground">Milestones</h2>
 
                 {milestones.map((m, i) => {
@@ -430,15 +442,15 @@ const CreateContract = () => {
                   )}
                 </div>
 
-                <div className="flex justify-between">
-                  <Button variant="ghost" onClick={() => setStep(1)}>
+                <div className="flex justify-between items-center pt-4 border-t border-border/50">
+                  <Button type="button" variant="ghost" onClick={() => setStep(1)}>
                     <ArrowLeft className="mr-1 h-4 w-4" /> Back
                   </Button>
-                  <Button variant="hero" onClick={() => setStep(3)} disabled={!canProceedStep2}>
-                    Next <ArrowRight className="ml-1 h-4 w-4" />
+                  <Button type="submit" variant="hero" disabled={!canProceedStep2 || !totalsMatch}>
+                    Preview Contract <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>
-              </div>
+              </form>
             )}
 
             {/* Step 3 — Review */}

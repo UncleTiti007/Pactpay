@@ -67,7 +67,7 @@ export function EditContractDialog({ isOpen, onOpenChange, contract, milestones:
 
     setSaving(true);
     try {
-      // 1. Update Contract
+      // 1. Update the contract header fields
       const { error: cError } = await supabase
         .from("contracts")
         .update({
@@ -81,31 +81,43 @@ export function EditContractDialog({ isOpen, onOpenChange, contract, milestones:
 
       if (cError) throw cError;
 
-      // 2. Clear old milestones and add new ones (cleanest way for complex revisions)
-      await supabase.from("milestones").delete().eq("contract_id", contract.id);
+      // 2. Smart milestone update — preserve existing IDs to avoid breaking history
+      // This prevents milestone_submissions from having dangling foreign keys
+      const existingIds = milestones.filter(m => m.id).map(m => m.id);
+      const originalIds = initialMilestones.map((m: any) => m.id);
       
-      const { error: mError } = await supabase.from("milestones").insert(
-        milestones.map((m, i) => ({
-          contract_id: contract.id,
-          title: m.name,
-          amount: m.paymentMode === "fixed" ? parseFloat(m.amount) : (netTotalNum * parseFloat(m.percentage)) / 100,
-          due_date: m.due_date || null,
-          order_index: i,
-          status: "pending"
-        }))
-      );
+      // Delete milestones that were removed by the client
+      const removedIds = originalIds.filter((id: string) => !existingIds.includes(id));
+      if (removedIds.length > 0) {
+        await supabase.from("milestones").delete().in("id", removedIds);
+      }
 
-      if (mError) throw mError;
+      // Update existing milestones in-place and insert new ones
+      for (let i = 0; i < milestones.length; i++) {
+        const m = milestones[i];
+        const amount = m.paymentMode === "fixed" ? parseFloat(m.amount) : (netTotalNum * parseFloat(m.percentage)) / 100;
+        if (m.id) {
+          // Update existing milestone
+          await supabase.from("milestones").update({
+            title: m.name,
+            amount,
+            due_date: m.due_date || null,
+            order_index: i
+          }).eq("id", m.id);
+        } else {
+          // Insert brand-new milestone
+          await supabase.from("milestones").insert({
+            contract_id: contract.id,
+            title: m.name,
+            amount,
+            due_date: m.due_date || null,
+            order_index: i,
+            status: "pending"
+          });
+        }
+      }
 
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      await supabase.from("contract_messages").insert({
-        contract_id: contract.id,
-        sender_id: currentUser?.id,
-        content: `Contract details updated by client.`,
-        is_system_message: true
-      });
-
-      toast.success("Contract updated successfully");
+      toast.success("Contract updated successfully!");
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
