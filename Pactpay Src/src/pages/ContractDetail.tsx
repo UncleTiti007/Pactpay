@@ -21,7 +21,6 @@ const statusColors: Record<string, string> = {
   disputed: "bg-red-500/20 text-red-400 border-red-500/30",
   cancelled: "bg-gray-500/20 text-gray-400 border-gray-500/30",
   rejected: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-  rejected: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
 const milestoneStatusColors: Record<string, string> = {
