@@ -28,6 +28,7 @@ export function DatePicker({
   disabled,
   calendarProps,
 }: DatePickerProps) {
+  const [open, setOpen] = React.useState(false);
   const [month, setMonth] = React.useState<Date | undefined>(date);
 
   // Sync month view if the selected date changes from the outside
@@ -38,7 +39,7 @@ export function DatePicker({
   }, [date]);
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant={"outline"}
@@ -59,6 +60,7 @@ export function DatePicker({
           selected={date}
           onSelect={(newDate) => {
             setDate(newDate);
+            setOpen(false);
           }}
           month={month}
           onMonthChange={setMonth}

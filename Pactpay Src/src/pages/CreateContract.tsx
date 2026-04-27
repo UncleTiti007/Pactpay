@@ -44,19 +44,26 @@ const CreateContract = () => {
     { name: "", amount: "", due_date: "", paymentMode: "fixed", percentage: "" },
   ]);
 
-  // Check KYC on mount
+  // Check KYC and Consent on mount
   useEffect(() => {
-    const checkKyc = async () => {
+    const checkStatus = async () => {
       if (!user) return;
       const { data } = await supabase
         .from("profiles")
-        .select("kyc_verified")
+        .select("kyc_verified, consent_given")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
+      
+      if (data && !data.consent_given) {
+        console.log("CreateContract: Consent not given, redirecting...");
+        navigate("/consent?redirect=/contracts/new");
+        return;
+      }
+      
       setKycVerified(data?.kyc_verified || false);
       setKycLoading(false);
     };
-    checkKyc();
+    checkStatus();
   }, [user]);
 
   const getMilestoneAmount = (m: Milestone, netTotal: number): number => {

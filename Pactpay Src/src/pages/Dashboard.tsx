@@ -109,11 +109,18 @@ const Dashboard = () => {
       // Fetch profile: wallet, KYC status, and bank info
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("wallet_balance, kyc_verified, id_doc_front_url, bank_name, bank_account_name, bank_account_number")
+        .select("wallet_balance, kyc_verified, id_doc_front_url, bank_name, bank_account_name, bank_account_number, consent_given")
         .eq("id", user.id)
         .maybeSingle();
       
       if (profile) {
+        // Enforce consent check
+        if (!profile.consent_given) {
+          console.log("Dashboard: Consent not given, redirecting...");
+          navigate("/consent" + (location.pathname !== "/dashboard" ? `?redirect=${encodeURIComponent(location.pathname)}` : ""));
+          return;
+        }
+
         setWalletBalance(profile.wallet_balance || 0);
         setKycVerified(profile.kyc_verified || false);
         setKycSubmitted(!!profile.id_doc_front_url);

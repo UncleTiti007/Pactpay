@@ -51,114 +51,99 @@ const Consent = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="mb-8 text-center">
-          <div className="flex justify-center mb-6">
-            <PactpayLogo size="lg" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Before you continue</h1>
-          <p className="text-sm text-muted-foreground mt-2 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#0F1B2D] px-4 py-10 selection:bg-primary/30">
+      <div className="w-full max-w-[480px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="mb-8 flex justify-center">
+          <PactpayLogo size="lg" />
+        </div>
+
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight mb-3">Before you continue</h1>
+          <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
             To use Pactpay you need to verify your identity. Before we collect your information, please review and agree to our policies.
           </p>
         </div>
 
-        <div className="glass-card p-8 relative border-primary/20">
-          <button 
-            type="button"
-            onClick={() => navigate(-1)}
-            className="absolute left-6 top-6 p-2 rounded-full hover:bg-muted text-muted-foreground transition-colors group"
-            title="Back"
-          >
-            <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
-          </button>
+        <div className="bg-[#132338] border border-[#1e3a5f] rounded-2xl p-6 md:p-8 shadow-2xl shadow-black/40">
           <div className="space-y-6">
-            <div className="flex items-start space-x-3 group cursor-pointer" onClick={() => setAgreedTerms(!agreedTerms)}>
-              <Checkbox 
-                id="terms" 
+            <label className="flex items-start gap-4 group cursor-pointer">
+              <input 
+                type="checkbox"
                 checked={agreedTerms} 
-                onCheckedChange={(checked) => setAgreedTerms(checked as boolean)}
-                className="mt-1 border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                onChange={(e) => setAgreedTerms(e.target.checked)}
+                className="mt-1 h-[18px] w-[18px] shrink-0 accent-[#00C27C] cursor-pointer"
               />
-              <label 
-                htmlFor="terms" 
-                className="text-sm leading-relaxed text-muted-foreground group-hover:text-foreground transition-colors cursor-pointer"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <span className="text-sm leading-relaxed text-slate-300 group-hover:text-white transition-colors">
                 I agree to the{" "}
                 <a 
                   href="/terms" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="text-primary font-medium hover:underline inline-flex items-center gap-1"
+                  className="text-[#00C27C] font-semibold hover:underline"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   Terms of Service
                 </a>
-              </label>
-            </div>
+              </span>
+            </label>
 
-            <div className="flex items-start space-x-3 group cursor-pointer" onClick={() => setAgreedPrivacy(!agreedPrivacy)}>
-              <Checkbox 
-                id="privacy" 
+            <label className="flex items-start gap-4 group cursor-pointer">
+              <input 
+                type="checkbox"
                 checked={agreedPrivacy} 
-                onCheckedChange={(checked) => setAgreedPrivacy(checked as boolean)}
-                className="mt-1 border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                onChange={(e) => setAgreedPrivacy(e.target.checked)}
+                className="mt-1 h-[18px] w-[18px] shrink-0 accent-[#00C27C] cursor-pointer"
               />
-              <label 
-                htmlFor="privacy" 
-                className="text-sm leading-relaxed text-muted-foreground group-hover:text-foreground transition-colors cursor-pointer"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <span className="text-sm leading-relaxed text-slate-300 group-hover:text-white transition-colors">
                 I agree to the{" "}
                 <a 
                   href="/privacy" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="text-primary font-medium hover:underline inline-flex items-center gap-1"
+                  className="text-[#00C27C] font-semibold hover:underline"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   Privacy Policy
                 </a>
-              </label>
-            </div>
+              </span>
+            </label>
 
-            <div className="flex items-start space-x-3 group cursor-pointer" onClick={() => setUnderstoodKYC(!understoodKYC)}>
-              <Checkbox 
-                id="kyc-consent" 
+            <label className="flex items-start gap-4 group cursor-pointer">
+              <input 
+                type="checkbox"
                 checked={understoodKYC} 
-                onCheckedChange={(checked) => setUnderstoodKYC(checked as boolean)}
-                className="mt-1 border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                onChange={(e) => setUnderstoodKYC(e.target.checked)}
+                className="mt-1 h-[18px] w-[18px] shrink-0 accent-[#00C27C] cursor-pointer"
               />
-              <label 
-                htmlFor="kyc-consent" 
-                className="text-sm leading-relaxed text-muted-foreground group-hover:text-foreground transition-colors cursor-pointer"
-              >
+              <span className="text-sm leading-relaxed text-slate-300 group-hover:text-white transition-colors">
                 I understand that my ID documents will be securely stored and reviewed only by authorised Pactpay staff for verification purposes
-              </label>
-            </div>
+              </span>
+            </label>
           </div>
 
-          <div className="space-y-4 pt-2">
+          <div className="mt-10 space-y-6">
             <Button 
-              variant="hero" 
-              className="w-full h-12 shadow-lg shadow-primary/20"
+              className="w-full h-12 bg-[#00C27C] hover:bg-[#00D485] text-[#0F1B2D] font-bold text-base rounded-xl transition-all shadow-lg shadow-[#00C27C]/10 disabled:opacity-40 disabled:cursor-not-allowed"
               disabled={!allChecked || loading}
               onClick={handleContinue}
             >
               {loading ? "Processing..." : "Continue to Verification"}
             </Button>
             
-            <button 
-              onClick={handleDecline}
-              className="w-full text-sm text-muted-foreground hover:text-destructive transition-colors py-2 font-medium"
-            >
-              Decline & Sign Out
-            </button>
+            <div className="text-center">
+              <button 
+                onClick={handleDecline}
+                className="text-sm text-slate-500 hover:text-red-400 transition-colors font-medium underline underline-offset-4"
+              >
+                Decline & Sign Out
+              </button>
+            </div>
           </div>
         </div>
 
-        <p className="mt-8 text-center text-xs text-slate-500">
-          Your security and privacy are our top priority. <br />
-          All data is encrypted and handled according to international standards.
+        <p className="mt-10 text-center text-[11px] text-slate-600 leading-relaxed uppercase tracking-widest font-medium">
+          Security & Privacy is our top priority. <br />
+          All data is encrypted and handled securely.
         </p>
       </div>
     </div>

@@ -187,7 +187,7 @@ export default function AdminDashboard() {
 
   // Derived Stats for Command Center
   const stats = {
-    pendingKYCs: users.filter(u => u.kyc_status === 'pending').length,
+    pendingKYCs: users.filter(u => !u.kyc_verified && u.id_doc_front_url).length,
     openDisputes: disputes.filter(d => d.status === 'open').length,
     pendingWithdrawals: transactions.filter(t => t.type === 'withdrawal' && t.metadata?.status === 'pending').length,
     unreadTickets: tickets.filter(t => t.status === 'open').length,
@@ -1135,9 +1135,7 @@ export default function AdminDashboard() {
                       
                       // Defensive date formatting
                       const formatDateSafe = (dateStr: any) => {
-                        if (!dateStr) return null;
-                        const d = new Date(dateStr);
-                        return isNaN(d.getTime()) ? null : d.toLocaleDateString();
+                        return formatDate(dateStr) || null;
                       };
 
                       const createdDate = formatDateSafe(c.created_at) || '—';

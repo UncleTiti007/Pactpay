@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock, Calendar as CalendarIcon } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import PactpayLogo from "@/components/PactpayLogo";
+import { toYMD, fromYMD } from "@/lib/utils";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria",
@@ -132,7 +133,8 @@ const KYC = () => {
 
   const isAdult = (dateStr: string) => {
     if (!dateStr) return false;
-    const birth = new Date(dateStr);
+    const birth = fromYMD(dateStr);
+    if (!birth) return false;
     const today = new Date();
     const age = today.getFullYear() - birth.getFullYear() -
       (today < new Date(today.getFullYear(), birth.getMonth(), birth.getDate()) ? 1 : 0);
@@ -360,23 +362,27 @@ const KYC = () => {
         </div>
 
         {/* Progress bar */}
-        <div className="mb-8 flex items-center px-2">
+        <div className="mb-10 flex items-start justify-between w-full max-w-sm mx-auto px-2">
           {steps.map((s, idx) => {
             const num = idx + 1;
             const Icon = s.icon;
             return (
-              <div key={num} className="flex flex-1 items-center gap-0">
-                <div className="flex flex-col items-center">
-                  <div className={`flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full border-2 transition-all ${
+              <div key={num} className="flex items-center flex-1 last:flex-none">
+                <div className="flex flex-col items-center relative z-10">
+                  <div className={`flex h-9 w-9 md:h-11 md:w-11 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                     num < step ? "bg-primary border-primary shadow-lg shadow-primary/20" :
-                    num === step ? "border-primary bg-primary/10" :
+                    num === step ? "border-primary bg-primary/10 ring-4 ring-primary/5" :
                     "border-border bg-card"
                   }`}>
-                    {num < step ? <Check className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary-foreground" /> : <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${num === step ? "text-primary" : "text-muted-foreground"}`} />}
+                    {num < step ? <Check className="h-4 w-4 md:h-5 md:w-5 text-primary-foreground" /> : <Icon className={`h-4 w-4 md:h-5 md:w-5 ${num === step ? "text-primary" : "text-muted-foreground"}`} />}
                   </div>
-                  <span className={`text-[10px] md:text-xs mt-1.5 ${num === step ? "text-primary font-bold" : "text-muted-foreground"}`}>{s.label}</span>
+                  <span className={`text-[10px] md:text-[11px] mt-2 font-bold uppercase tracking-wider ${num === step ? "text-primary" : "text-muted-foreground/60"}`}>{s.label}</span>
                 </div>
-                {idx < 2 && <div className={`h-1 flex-1 mb-6 mx-1 rounded-full ${num < step ? "bg-primary" : "bg-border/50"}`} />}
+                {idx < steps.length - 1 && (
+                  <div className="flex-1 h-[2px] -mt-7 mx-0">
+                    <div className={`h-full transition-all duration-500 ${num < step ? "bg-primary shadow-[0_0_10px_rgba(0,194,124,0.3)]" : "bg-border/40"}`} />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -419,8 +425,8 @@ const KYC = () => {
             <div className="space-y-3">
               <Label>Date of Birth <span className="text-destructive">*</span></Label>
               <DatePicker
-                  date={dob ? new Date(dob) : undefined}
-                  setDate={(date) => setDob(date ? date.toISOString().split("T")[0] : "")}
+                  date={fromYMD(dob)}
+                  setDate={(date) => setDob(toYMD(date))}
                   placeholder="Select your birth date"
                   calendarProps={{
                     captionLayout: "dropdown",
