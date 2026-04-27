@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useNavigate, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { useEffect, ReactNode } from "react";
+import { toast } from "sonner";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 
@@ -16,8 +19,38 @@ import KYC from "./pages/KYC";
 import Profile from "./pages/Profile";
 import Transactions from "./pages/Transactions";
 import Support from "./pages/Support";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
+import Consent from "./pages/Consent";
 
 const queryClient = new QueryClient();
+
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
+  const { user, isEmailVerified, loading, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // If user is logged in but NOT verified, force them out
+    if (!loading && user && !isEmailVerified) {
+      console.log("ProtectedRoute: User is unverified, signing out...");
+      signOut().then(() => {
+        navigate("/auth?unverified=true", { replace: true });
+      });
+    }
+  }, [user, isEmailVerified, loading, signOut, navigate]);
+
+  if (loading) return null;
+  
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (!isEmailVerified) {
+    return null; // The useEffect handles the redirect/signOut
+  }
+
+  return <>{children}</>;
+};
 
 const AppContent = () => {
   const { isAccessBlocked, signOut, loading } = useAuth();
@@ -51,15 +84,21 @@ const AppContent = () => {
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/contracts/new" element={<CreateContract />} />
-      <Route path="/contracts/:id" element={<ContractDetail />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
       <Route path="/invite/:token" element={<InviteAccept />} />
-      <Route path="/admin" element={<AdminDashboard />} />
-      <Route path="/kyc" element={<KYC />} />
-      <Route path="/profile" element={<Profile />} />
-      <Route path="/transactions" element={<Transactions />} />
-      <Route path="/support" element={<Support />} />
+      
+      {/* Protected Routes */}
+      <Route path="/consent" element={<ProtectedRoute><Consent /></ProtectedRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/contracts/new" element={<ProtectedRoute><CreateContract /></ProtectedRoute>} />
+      <Route path="/contracts/:id" element={<ProtectedRoute><ContractDetail /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+      <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+      
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -68,12 +107,14 @@ const AppContent = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Sonner />
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </TooltipProvider>
+      <ThemeProvider>
+        <TooltipProvider>
+          <Sonner />
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
+        </TooltipProvider>
+      </ThemeProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

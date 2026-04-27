@@ -191,8 +191,8 @@ const CreateContract = () => {
   return (
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
-      <div className="container mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-8 text-2xl font-bold text-foreground">Create a Contract</h1>
+      <div className="container mx-auto max-w-2xl px-4 py-6 md:py-12">
+        <h1 className="mb-6 md:mb-8 text-2xl md:text-3xl font-bold text-foreground tracking-tight">Create a Contract</h1>
 
         {/* KYC Gate — block form if not verified */}
         {!kycVerified && (
@@ -216,12 +216,12 @@ const CreateContract = () => {
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex flex-1 items-center gap-2">
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${s <= step ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground"
+                    className={`flex h-8 w-8 md:h-10 md:w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${s <= step ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
                       }`}
                   >
-                    {s < step ? <Check className="h-4 w-4" /> : s}
+                    {s < step ? <Check className="h-4 w-4 md:h-5 md:w-5" /> : s}
                   </div>
-                  {s < 3 && <div className={`h-px flex-1 ${s < step ? "bg-primary" : "bg-border"}`} />}
+                  {s < 3 && <div className={`h-1 flex-1 rounded-full ${s < step ? "bg-primary" : "bg-border/50"}`} />}
                 </div>
               ))}
             </div>
@@ -233,7 +233,7 @@ const CreateContract = () => {
                   e.preventDefault();
                   if (canProceedStep1) setStep(2);
                 }}
-                className="glass-card space-y-5 p-6"
+                className="glass-card space-y-5 p-5 md:p-8"
               >
                 <h2 className="text-lg font-semibold text-foreground">Contract Basics</h2>
                 <div>
@@ -315,7 +315,7 @@ const CreateContract = () => {
                   e.preventDefault();
                   if (canProceedStep2 && totalsMatch) setStep(3);
                 }}
-                className="glass-card space-y-5 p-6"
+                className="glass-card space-y-6 p-5 md:p-8"
               >
                 <h2 className="text-lg font-semibold text-foreground">Milestones</h2>
 
@@ -357,13 +357,13 @@ const CreateContract = () => {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         {m.paymentMode === "fixed" ? (
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                             <Input
                               type="number"
-                              className="pl-7"
+                              className="pl-7 h-11 sm:h-10"
                               value={m.amount}
                               onChange={(e) => updateMilestone(i, "amount", e.target.value)}
                               placeholder="Amount (USD)"
@@ -374,6 +374,7 @@ const CreateContract = () => {
                             <div className="relative">
                               <Input
                                 type="number"
+                                className="h-11 sm:h-10"
                                 value={m.percentage}
                                 onChange={(e) => updateMilestone(i, "percentage", e.target.value)}
                                 placeholder="Percentage"
@@ -400,7 +401,7 @@ const CreateContract = () => {
                               updateMilestone(i, "due_date", dateStr);
                             }}
                             placeholder="Due date"
-                            className="h-9 text-sm w-full"
+                            className="h-11 sm:h-9 text-sm w-full"
                             calendarProps={{
                               fromYear: new Date().getFullYear(),
                               toYear: new Date().getFullYear() + 2,
@@ -442,11 +443,11 @@ const CreateContract = () => {
                   )}
                 </div>
 
-                <div className="flex justify-between items-center pt-4 border-t border-border/50">
-                  <Button type="button" variant="ghost" onClick={() => setStep(1)}>
+                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-border/50">
+                  <Button type="button" variant="ghost" onClick={() => setStep(1)} className="h-11 sm:h-10">
                     <ArrowLeft className="mr-1 h-4 w-4" /> Back
                   </Button>
-                  <Button type="submit" variant="hero" disabled={!canProceedStep2 || !totalsMatch}>
+                  <Button type="submit" variant="hero" disabled={!canProceedStep2 || !totalsMatch} className="h-11 sm:h-10">
                     Preview Contract <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>

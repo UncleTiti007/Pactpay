@@ -351,32 +351,32 @@ const KYC = () => {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-lg">
         {/* Header */}
-        <div className="mb-8 text-center">
+        <div className="mb-6 md:mb-8 text-center">
           <div className="flex justify-center mb-4">
             <PactpayLogo size="lg" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Identity Verification</h1>
-          <p className="text-sm text-muted-foreground mt-1">Complete your KYC to start using Pactpay</p>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Identity Verification</h1>
+          <p className="text-xs text-muted-foreground mt-1">Complete your KYC to start using Pactpay</p>
         </div>
 
         {/* Progress bar */}
-        <div className="mb-8 flex items-center">
+        <div className="mb-8 flex items-center px-2">
           {steps.map((s, idx) => {
             const num = idx + 1;
             const Icon = s.icon;
             return (
               <div key={num} className="flex flex-1 items-center gap-0">
                 <div className="flex flex-col items-center">
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${
-                    num < step ? "bg-primary border-primary" :
+                  <div className={`flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-full border-2 transition-all ${
+                    num < step ? "bg-primary border-primary shadow-lg shadow-primary/20" :
                     num === step ? "border-primary bg-primary/10" :
                     "border-border bg-card"
                   }`}>
-                    {num < step ? <Check className="h-4 w-4 text-primary-foreground" /> : <Icon className={`h-4 w-4 ${num === step ? "text-primary" : "text-muted-foreground"}`} />}
+                    {num < step ? <Check className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary-foreground" /> : <Icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${num === step ? "text-primary" : "text-muted-foreground"}`} />}
                   </div>
-                  <span className={`text-xs mt-1 ${num === step ? "text-primary font-medium" : "text-muted-foreground"}`}>{s.label}</span>
+                  <span className={`text-[10px] md:text-xs mt-1.5 ${num === step ? "text-primary font-bold" : "text-muted-foreground"}`}>{s.label}</span>
                 </div>
-                {idx < 2 && <div className={`h-px flex-1 mb-5 mx-1 ${num < step ? "bg-primary" : "bg-border"}`} />}
+                {idx < 2 && <div className={`h-1 flex-1 mb-6 mx-1 rounded-full ${num < step ? "bg-primary" : "bg-border/50"}`} />}
               </div>
             );
           })}
@@ -464,7 +464,7 @@ const KYC = () => {
 
             {/* Avatar upload */}
             <div>
-              <Label>Profile Picture <span className="text-destructive">*</span></Label>
+              <Label className="mb-2 block">Profile Picture <span className="text-destructive">*</span></Label>
               <input
                 ref={avatarRef}
                 type="file"
@@ -573,9 +573,9 @@ const KYC = () => {
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => setStep(1)}><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
-              <Button variant="hero" className="flex-1" disabled={!canProceedStep2} onClick={() => setStep(3)}>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button variant="ghost" onClick={() => setStep(1)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
+              <Button variant="hero" className="flex-1 h-11 md:h-10 order-1 sm:order-2" disabled={!canProceedStep2} onClick={() => setStep(3)}>
                 Next <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
@@ -640,9 +640,9 @@ const KYC = () => {
 
             <p className="text-xs text-muted-foreground">Max 5MB per file. Documents accept images (JPEG, PNG, WebP) and PDF.</p>
 
-            <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => setStep(2)}><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
-              <Button variant="hero" className="flex-1" disabled={!canProceedStep3 || submitting} onClick={handleSubmit}>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button variant="ghost" onClick={() => setStep(2)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
+              <Button variant="hero" className="flex-1 h-11 md:h-10 order-1 sm:order-2" disabled={!canProceedStep3 || submitting} onClick={handleSubmit}>
                 {submitting ? "Submitting..." : "Submit KYC"}
               </Button>
             </div>

@@ -842,13 +842,15 @@ export default function AdminDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-card glass-card">
-            <TabsTrigger value="disputes">Active Disputes ({disputes.filter(d => d.status === 'open').length})</TabsTrigger>
-            <TabsTrigger value="contracts">Contracts ({contracts.length})</TabsTrigger>
-            <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
-            <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
-            <TabsTrigger value="support">Support ({tickets.length})</TabsTrigger>
-          </TabsList>
+          <div className="horizontal-scroll-indicator">
+            <TabsList className="bg-card glass-card inline-flex w-auto min-w-full">
+              <TabsTrigger value="disputes">Active Disputes ({disputes.filter(d => d.status === 'open').length})</TabsTrigger>
+              <TabsTrigger value="contracts">Contracts ({contracts.length})</TabsTrigger>
+              <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
+              <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
+              <TabsTrigger value="support">Support ({tickets.length})</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="disputes" className="glass-card p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
@@ -1094,7 +1096,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
             </div>
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-md border border-border overflow-hidden horizontal-scroll-indicator">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
@@ -1240,7 +1242,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-md border border-border overflow-hidden horizontal-scroll-indicator">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
@@ -1369,7 +1371,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
             </div>
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-md border border-border overflow-hidden horizontal-scroll-indicator">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
@@ -1497,7 +1499,7 @@ export default function AdminDashboard() {
                           <TableCell>
                             <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
                               status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
-                                'bg-green-500/20 text-green-500 border-green-500/30'
+                                'bg-green-500/20 text-green-500 border-green-500/20'
                               }`}>
                               {status}
                             </Badge>

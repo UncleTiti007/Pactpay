@@ -9,6 +9,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   accountStatus: string;
   isAccessBlocked: boolean;
+  isEmailVerified: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   accountStatus: 'active',
   isAccessBlocked: false,
+  isEmailVerified: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -97,9 +99,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const isAccessBlocked = accountStatus === 'deactivated' || accountStatus === 'locked';
+  const isEmailVerified = !!user?.email_confirmed_at || user?.app_metadata?.provider === 'google';
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut, accountStatus, isAccessBlocked }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, accountStatus, isAccessBlocked, isEmailVerified }}>
       {children}
     </AuthContext.Provider>
   );

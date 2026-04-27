@@ -176,21 +176,31 @@ const Dashboard = () => {
       </div>
     );
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 0 && hour < 12) return { text: "Good morning", emoji: "🌅" };
+    if (hour >= 12 && hour < 17) return { text: "Good afternoon", emoji: "☀️" };
+    if (hour >= 17 && hour < 21) return { text: "Good evening", emoji: "🌆" };
+    return { text: "Good night", emoji: "🌙" };
+  };
+
+  const greeting = getGreeting();
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-6 md:py-8">
 
         {/* KYC pending banner */}
         {!kycVerified && (
-          <div className={`mb-6 flex items-center justify-between rounded-lg border px-4 py-3 ${
+          <div className={`mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-lg border px-4 py-3 gap-3 ${
             isPendingApproval 
               ? "border-amber-500/50 bg-amber-500/20 text-amber-200" 
               : "border-amber-500/30 bg-amber-500/10 text-amber-400"
           }`}>
-            <div className="flex items-center gap-2 text-sm">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+            <div className="flex items-start sm:items-center gap-2 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0" />
               <span className="font-medium">
                 {isPendingApproval 
                   ? "Verification Pending: Your account is currently in 'View-Only' mode while our team reviews your documents."
@@ -199,7 +209,7 @@ const Dashboard = () => {
               {!isPendingApproval && (
                 <button
                   onClick={() => navigate("/kyc")}
-                  className="underline font-bold ml-1 hover:text-amber-300 transition-colors"
+                  className="underline font-bold ml-1 hover:text-amber-300 transition-colors whitespace-nowrap"
                 >
                   Complete KYC
                 </button>
@@ -208,7 +218,7 @@ const Dashboard = () => {
             {kycVerified && (
               <button
                 onClick={() => setKycBannerDismissed(true)}
-                className="ml-4 text-amber-400 hover:text-amber-300"
+                className="text-amber-400 hover:text-amber-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -217,10 +227,10 @@ const Dashboard = () => {
         )}
 
         {/* Welcome + Quick Actions */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-foreground">
-              Welcome back, {firstName}
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+              {greeting.text}, {firstName} {greeting.emoji}
             </h1>
             {isPendingApproval && (
               <p className="text-xs text-amber-500/80 flex items-center gap-1">
@@ -228,14 +238,14 @@ const Dashboard = () => {
               </p>
             )}
           </div>
-          <div className="flex gap-3">
-            <Button variant="hero" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}>
+          <div className="hidden sm:flex gap-3">
+            <Button variant="hero" asChild disabled={isPendingApproval} className={`h-11 sm:h-10 ${isPendingApproval ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}>
               <Link to="/contracts/new">
                 <Plus className="mr-2 h-4 w-4" />
                 New Contract
               </Link>
             </Button>
-            <Button variant="outline" className="border-border/50" disabled={isPendingApproval} asChild>
+            <Button variant="outline" className="h-11 sm:h-10 border-border/50" disabled={isPendingApproval} asChild>
               <Link to="/transactions">
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                 View All Transactions

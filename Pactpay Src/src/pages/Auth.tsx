@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -6,8 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, Check, X, ShieldCheck } from "lucide-react";
 import PactpayLogo from "@/components/PactpayLogo";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type FormMode = "signin" | "signup" | "forgot" | "update";
 
@@ -28,15 +34,38 @@ const Auth = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const [isUnverified, setIsUnverified] = useState(false);
+
+  // Password Validation Logic
+  const passwordRequirements = useMemo(() => {
+    return {
+      length: password.length >= 8,
+      lowercase: /[a-z]/.test(password),
+      uppercase: /[A-Z]/.test(password),
+      number: /[0-9]/.test(password),
+      symbol: /[^A-Za-z0-9]/.test(password),
+    };
+  }, [password]);
+
+  const isPasswordValid = Object.values(passwordRequirements).every(Boolean);
+
   useEffect(() => {
+    // If redirected with unverified flag
+    if (searchParams.get("unverified") === "true") {
+      setIsUnverified(true);
+      setFormMode("signin");
+    }
+
     // If we just got confirmed, force sign out so they must sign in manually as requested
     if (searchParams.get("confirmed") === "true") {
       const performSignOut = async () => {
         await supabase.auth.signOut();
+        setIsUnverified(false);
         toast.success("Email confirmed successfully! Please sign in to continue.");
         // Clean up the URL
         const newParams = new URLSearchParams(window.location.search);
         newParams.delete("confirmed");
+        newParams.delete("unverified");
         navigate("/auth?" + newParams.toString(), { replace: true });
       };
       performSignOut();
@@ -49,9 +78,18 @@ const Auth = () => {
   }, [user, searchParams]);
 
   const checkProfile = async (userId: string) => {
+    // First check if email is confirmed (unless it's Google)
+    const isGoogle = user?.app_metadata?.provider === 'google';
+    if (!user?.email_confirmed_at && !isGoogle) {
+      console.log("Auth: User email not confirmed, showing verification state");
+      setIsUnverified(true);
+      await supabase.auth.signOut();
+      return;
+    }
+
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("kyc_verified, full_name, is_admin, email")
+      .select("kyc_verified, full_name, is_admin, email, consent_given")
       .eq("id", userId)
       .maybeSingle();
 
@@ -74,38 +112,39 @@ const Auth = () => {
       }
       navigate(redirectPath || "/admin");
     } else {
-      if (!profile) {
-        console.log("Auth: User profile missing, creating...");
-        const { error: insertError } = await supabase.from("profiles").insert({
-          id: userId,
-          full_name: user?.user_metadata?.full_name || '',
-          email: user?.email?.toLowerCase(),
-          account_status: 'active'
-        });
+      // First check for consent
+      if (profile && !profile.consent_given) {
+        console.log("Auth: Consent not given, redirecting to /consent");
+        navigate("/consent" + (redirectPath ? `?redirect=${encodeURIComponent(redirectPath)}` : ""));
+        return;
+      }
 
-        if (insertError) {
-          console.error("Auth: Failed to create profile:", insertError);
-          toast.error("Could not initialize profile. Please contact support.");
-          // Stay on auth page or try again
-          return;
-        }
+      if (!profile || !profile.full_name) {
+        console.log("Auth: User profile missing or incomplete, redirecting to /consent (for new user) or /kyc");
         
-        // New user MUST go to KYC
-        navigate(redirectPath || "/kyc");
+        // If profile doesn't exist at all, create basic entry
+        if (!profile) {
+          await supabase.from("profiles").insert({
+            id: userId,
+            full_name: user?.user_metadata?.full_name || '',
+            email: user?.email?.toLowerCase(),
+            account_status: 'active'
+          });
+          
+          // NEW USER always goes to consent first
+          navigate("/consent" + (redirectPath ? `?redirect=${encodeURIComponent(redirectPath)}` : ""));
+        } else {
+          // If profile exists but no full_name, it means they might have passed consent but not KYC
+          navigate(redirectPath || "/kyc");
+        }
       } else {
         // Update email if missing
         if (!profile.email && user?.email) {
           await supabase.from("profiles").update({ email: user.email.toLowerCase() }).eq("id", userId);
         }
         
-        // If full_name is missing, they haven't finished Step 1 of KYC
-        if (!profile.full_name) {
-          console.log("Auth: Profile incomplete, redirecting to KYC");
-          navigate(redirectPath || "/kyc");
-        } else {
-          console.log("Auth: Profile found, redirecting to dashboard");
-          navigate(redirectPath || "/dashboard");
-        }
+        console.log("Auth: Profile found, redirecting to dashboard");
+        navigate(redirectPath || "/dashboard");
       }
     }
   };
@@ -118,48 +157,68 @@ const Auth = () => {
     if (error) toast.error(error.message);
   };
 
+  const handleResendVerification = async () => {
+    if (!email) {
+      toast.error("Please enter your email address first.");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: window.location.origin + "/auth?confirmed=true"
+      }
+    });
+    setLoading(false);
+    if (error) toast.error(error.message);
+    else toast.success("Verification email resent!");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (formMode === "signup" && !isPasswordValid) {
+      toast.error("Please meet all password requirements.");
+      return;
+    }
+
     setLoading(true);
+    setIsUnverified(false);
 
     try {
       if (formMode === "signup") {
-        const specialCharRegex = /[^A-Za-z0-9]/;
-        if (!specialCharRegex.test(password)) {
-          toast.error("Password must contain at least one special character.");
-          setLoading(false);
-          return;
-        }
-
-        // Check for existing email in profiles
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .maybeSingle();
-
-        if (existingProfile) {
-          toast.error("This email is already registered. Please sign in instead.");
-          setLoading(false);
-          return;
-        }
-
-        const redirectParam = searchParams.get("redirect");
-        const redirectTo = window.location.origin + "/auth?confirmed=true" + (redirectParam ? `&redirect=${encodeURIComponent(redirectParam)}` : "");
-
-        const { error } = await supabase.auth.signUp({
+        const { data: { user: signedUpUser }, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: redirectTo,
+            emailRedirectTo: window.location.origin + "/auth?confirmed=true",
           },
         });
-        if (error) toast.error(error.message);
-        else toast.success("Check your email to confirm your account, then sign in here.");
+
+        if (error) {
+          if (error.message.toLowerCase().includes("already registered") || error.message.toLowerCase().includes("already exists")) {
+            toast.info("An account with this email already exists. Please sign in instead.");
+            setFormMode("signin");
+          } else {
+            toast.error(error.message);
+          }
+        } else if (signedUpUser) {
+          toast.success("Check your email to confirm your account, then sign in here.");
+          setFormMode("signin");
+        }
       } else if (formMode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) toast.error(error.message);
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        
+        if (error) {
+          toast.error(error.message);
+        } else if (data.user && !data.user.email_confirmed_at) {
+          // Manually handle unverified state even if Supabase allows login
+          setIsUnverified(true);
+          await supabase.auth.signOut();
+          toast.error("Please verify your email before logging in.");
+        }
       } else if (formMode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin + "/auth?mode=update-password",
@@ -193,6 +252,17 @@ const Auth = () => {
 
   const { title, sub } = getPageContent();
 
+  const Requirement = ({ met, text }: { met: boolean; text: string }) => (
+    <div className={`flex items-center gap-2 text-xs transition-colors ${met ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+      {met ? (
+        <Check className="h-3 w-3" />
+      ) : (
+        <X className="h-3 w-3 text-destructive" />
+      )}
+      <span>{text}</span>
+    </div>
+  );
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
@@ -200,21 +270,46 @@ const Auth = () => {
           <PactpayLogo size="lg" />
         </Link>
 
-        <div className="glass-card p-8 relative">
+        <div className="glass-card p-6 md:p-8 relative">
           <button 
             type="button"
             onClick={() => {
               if (formMode === "forgot" || formMode === "update") setFormMode("signin");
               else navigate("/");
             }}
-            className="absolute left-6 top-6 p-2 rounded-full hover:bg-muted text-muted-foreground transition-colors group"
+            className="absolute left-4 md:left-6 top-4 md:top-6 p-2 rounded-full hover:bg-muted text-muted-foreground transition-colors group"
             title="Back"
           >
             <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
           </button>
           
-          <h2 className="mb-2 text-center text-2xl font-bold text-foreground mt-4">{title}</h2>
+          <h2 className="mb-2 text-center text-xl md:text-2xl font-bold text-foreground mt-4 md:mt-2">{title}</h2>
           <p className="mb-6 text-center text-sm text-muted-foreground">{sub}</p>
+
+          {isUnverified && (
+            <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-3 animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                  <span className="text-white text-[10px] font-bold">!</span>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-amber-500">Email Verification Required</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    We've sent a confirmation link to your email. Please click it to activate your account.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full text-xs h-9 bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+                onClick={handleResendVerification}
+                disabled={loading}
+              >
+                {loading ? "Sending..." : "Resend Verification Email"}
+              </Button>
+            </div>
+          )}
 
           {formMode !== "update" && (
             <>
@@ -272,7 +367,7 @@ const Auth = () => {
             )}
             
             {(formMode === "signin" || formMode === "signup" || formMode === "update") && (
-              <div>
+              <div className="space-y-3">
                 <div className="flex justify-between items-center mb-1">
                   <Label htmlFor="password">
                     {formMode === "update" ? "New Password" : "Password"} <span className="text-destructive">*</span>
@@ -296,27 +391,57 @@ const Auth = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    minLength={6}
+                    minLength={formMode === "signup" ? 8 : 6}
                     className="pr-10"
                   />
                   <button
                     type="button"
-                    onMouseDown={() => setShowPassword(true)}
-                    onMouseUp={() => setShowPassword(false)}
-                    onMouseLeave={() => setShowPassword(false)}
-                    onTouchStart={() => setShowPassword(true)}
-                    onTouchEnd={() => setShowPassword(false)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 transition-colors"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+
+                {formMode === "signup" && (
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/50 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">Password Requirements</p>
+                      {isPasswordValid && <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />}
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <Requirement met={passwordRequirements.length} text="At least 8 characters" />
+                      <Requirement met={passwordRequirements.uppercase} text="One uppercase letter" />
+                      <Requirement met={passwordRequirements.lowercase} text="One lowercase letter" />
+                      <Requirement met={passwordRequirements.number} text="One number" />
+                      <Requirement met={passwordRequirements.symbol} text="One symbol (e.g. !@#$)" />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             
-            <Button type="submit" variant="hero" className="w-full" disabled={loading}>
-              {loading ? "Loading..." : formMode === "signup" ? "Create Account" : formMode === "forgot" ? "Send Reset Link" : formMode === "update" ? "Update Password" : "Sign In"}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-full">
+                    <Button 
+                      type="submit" 
+                      variant="hero" 
+                      className="w-full" 
+                      disabled={loading || (formMode === "signup" && !isPasswordValid)}
+                    >
+                      {loading ? "Loading..." : formMode === "signup" ? "Create Account" : formMode === "forgot" ? "Send Reset Link" : formMode === "update" ? "Update Password" : "Sign In"}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {formMode === "signup" && !isPasswordValid && password.length > 0 && (
+                  <TooltipContent side="bottom" className="bg-destructive text-destructive-foreground border-none">
+                    <p>Password requirements not met</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </form>
 
           {formMode !== "update" && (

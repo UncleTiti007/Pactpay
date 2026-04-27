@@ -8,9 +8,14 @@ const Footer = () => {
           <PactpayLogo size="sm" />
           <span className="text-sm text-muted-foreground">Pactpay © 2026</span>
         </div>
-        <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-          Privacy Policy
-        </a>
+        <div className="flex gap-6">
+          <a href="/privacy" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+            Privacy Policy
+          </a>
+          <a href="/terms" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+            Terms of Service
+          </a>
+        </div>
       </div>
     </footer>
   );

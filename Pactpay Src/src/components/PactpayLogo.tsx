@@ -38,11 +38,9 @@ const PactpayLogo = ({ size = "md" }: PactpayLogoProps) => {
       <text x="40" y="26"
         fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
         fontSize="20" fontWeight="700" letterSpacing="-0.5"
-        fill={pactColor}>Pact</text>
-      <text x="84" y="26"
-        fontFamily="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-        fontSize="20" fontWeight="700" letterSpacing="-0.5"
-        fill="#00D485">pay</text>
+        fill={pactColor}>
+        Pact<tspan fill="#00D485">pay</tspan>
+      </text>
     </svg>
   );
 };
