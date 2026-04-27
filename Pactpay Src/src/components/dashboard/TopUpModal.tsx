@@ -92,28 +92,27 @@ const CheckoutForm = ({ clientSecret, onSuccess, onCancel }: { clientSecret: str
 
   return (
     <div className="space-y-6 pt-4">
-      {/* Custom Tab Switcher */}
-      <div className="flex gap-2 p-1 bg-muted/30 rounded-lg border border-border/50">
+      <div className="flex gap-2 p-1 bg-muted/20 rounded-xl border border-border/30 mb-6">
         <button
           onClick={() => setPaymentMethod('card')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
             paymentMethod === 'card' 
-              ? 'bg-background text-foreground shadow-sm border border-border/50' 
+              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 glow-primary' 
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
           }`}
         >
-          <CreditCard className="h-4 w-4" />
+          <CreditCard className="h-3.5 w-3.5" />
           Credit Card
         </button>
         <button
           onClick={() => setPaymentMethod('google_pay')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
             paymentMethod === 'google_pay' 
-              ? 'bg-background text-foreground shadow-sm border border-border/50' 
+              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 glow-primary' 
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
           }`}
         >
-          <Wallet className="h-4 w-4" />
+          <Wallet className="h-3.5 w-3.5" />
           Google Pay
         </button>
       </div>
@@ -173,7 +172,6 @@ const TopUpModal = ({ isOpen, onClose, onSuccess }: TopUpModalProps) => {
 
     setIsLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
-    console.log("Session token (create):", session?.access_token ? "EXISTS" : "NULL");
 
     if (!session) {
       toast.error("Please log in again");
@@ -191,15 +189,7 @@ const TopUpModal = ({ isOpen, onClose, onSuccess }: TopUpModalProps) => {
     });
 
     if (error || !data?.clientSecret) {
-      console.error("TopUpModal Error (create):", error);
-      
-      // Try to get more detail from the error
-      let detail = error?.message || "Check console for details";
-      if (error instanceof Error && (error as any).context) {
-        console.error("Error context:", (error as any).context);
-      }
-      
-      toast.error(`Failed to initialize payment: ${detail}`);
+      toast.error(`Failed to initialize payment: ${error?.message || "Check console"}`);
       setIsLoading(false);
       return;
     }
@@ -221,63 +211,82 @@ const TopUpModal = ({ isOpen, onClose, onSuccess }: TopUpModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && resetAndClose()}>
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <DialogTitle>Top Up Wallet</DialogTitle>
-          <DialogDescription>
-            {clientSecret ? "Enter your payment details below. Use 4242 4242 4242 4242 for demo." : "Enter the amount you wish to add to your escrow wallet."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-border/50">
+        <div className="p-6 pb-4">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-xl font-bold">Top Up Wallet</DialogTitle>
+            <DialogDescription className="text-muted-foreground mt-1.5">
+              {clientSecret 
+                ? "Enter your payment details below to fund your escrow wallet." 
+                : "Enter the amount you wish to add to your escrow wallet. Funds are held securely until you release them."}
+            </DialogDescription>
+          </DialogHeader>
 
-        {!clientSecret ? (
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleNext();
-            }} 
-            className="space-y-4 py-4"
-          >
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount (USD)</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder="1000"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                autoFocus
-              />
+          {!clientSecret ? (
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleNext();
+              }} 
+              className="space-y-6 pt-2"
+            >
+              <div className="space-y-3">
+                <Label htmlFor="amount" className="text-sm font-medium">Amount (USD)</Label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">$</span>
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="1,000"
+                    className="pl-8 h-12 bg-muted/20 border-border/50 text-lg font-semibold focus:ring-primary/20"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground italic">Use 4242 4242 4242 4242 for demo testing.</p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={resetAndClose} className="flex-1 h-11 border-border/50">
+                  Cancel
+                </Button>
+                <Button type="submit" variant="hero" disabled={isLoading || !amount} className="flex-1 h-11">
+                  {isLoading ? "Processing..." : "Continue to Payment"}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="pt-2">
+              <Elements 
+                stripe={stripePromise} 
+                options={{ 
+                  clientSecret, 
+                  appearance: { 
+                    theme: 'night',
+                    variables: {
+                      colorPrimary: '#00d17f',
+                      colorBackground: '#0F172A',
+                      colorText: '#f8fafc',
+                      colorTextSecondary: '#94a3b8',
+                      colorDanger: '#ef4444',
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      spacingUnit: '4px',
+                      borderRadius: '12px',
+                    },
+                  } 
+                }}
+              >
+                <CheckoutForm clientSecret={clientSecret} onSuccess={handleSuccess} onCancel={resetAndClose} />
+              </Elements>
             </div>
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="ghost" onClick={resetAndClose}>Cancel</Button>
-              <Button type="submit" variant="hero" disabled={isLoading || !amount}>
-                {isLoading ? "Starting..." : "Next"}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <Elements 
-            stripe={stripePromise} 
-            options={{ 
-              clientSecret, 
-              appearance: { 
-                theme: 'night',
-                variables: {
-                  colorPrimary: '#00d17f',
-                  colorBackground: '#111827', // Matching dark theme
-                  colorText: '#f8fafc',
-                  colorTextSecondary: '#94a3b8',
-                  colorDanger: '#ef4444',
-                  fontFamily: 'system-ui, sans-serif',
-                  spacingUnit: '4px',
-                  borderRadius: '8px',
-                },
-              } 
-            }}
-          >
-            <CheckoutForm clientSecret={clientSecret} onSuccess={handleSuccess} onCancel={resetAndClose} />
-          </Elements>
-        )}
+          )}
+        </div>
+        
+        <div className="bg-muted/30 p-4 flex items-center justify-center gap-2 border-t border-border/30">
+          <Wallet className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Secure Escrow Payment</span>
+        </div>
       </DialogContent>
     </Dialog>
   );

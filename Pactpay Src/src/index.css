@@ -125,18 +125,18 @@
       font-size: 16px !important;
     }
 
-    /* Full-screen dialogs on mobile */
+    /* Improved mobile dialogs - no longer forced full-screen height */
     .DialogContent, 
     [role="dialog"] {
-      width: 100% !important;
-      max-width: 100vw !important;
-      height: 100vh !important;
-      height: -webkit-fill-available !important;
-      border-radius: 0 !important;
-      margin: 0 !important;
-      top: 0 !important;
-      left: 0 !important;
-      transform: none !important;
+      width: 95% !important;
+      max-width: 480px !important;
+      height: auto !important;
+      max-height: 90vh !important;
+      border-radius: var(--radius) !important;
+      margin: 0 auto !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
     }
   }
 

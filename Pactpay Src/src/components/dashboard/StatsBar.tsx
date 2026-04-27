@@ -20,12 +20,12 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
       icon: Wallet,
       accent: true,
       action: (
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 flex-wrap justify-end">
           {onTopUp && (
             <Button 
               variant="outline" 
               size="sm" 
-              className={`h-7 border-primary/30 text-xs text-primary hover:bg-primary/10 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
+              className={`h-8 px-2.5 border-primary/30 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors ${disabled ? "opacity-50 cursor-not-allowed" : ""}`} 
               onClick={disabled ? undefined : onTopUp}
               disabled={disabled}
             >
@@ -35,7 +35,7 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
           <Button 
             variant="outline" 
             size="sm" 
-            className={`h-7 border-primary/30 text-xs text-primary hover:bg-primary/10 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`h-8 px-2.5 border-primary/30 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
             disabled={disabled}
             onClick={disabled ? undefined : onWithdraw}
           >
@@ -66,7 +66,7 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat) => (
         <div
           key={stat.label}
@@ -83,9 +83,9 @@ const StatsBar = ({ walletBalance, activeContracts, totalEarned, pendingApproval
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
           )}
           <div className="relative">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                <stat.icon className={`h-4.5 w-4.5 ${stat.accent ? "text-primary" : "text-muted-foreground"}`} />
+            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50">
+                <stat.icon className={`h-5 w-5 ${stat.accent ? "text-primary" : "text-muted-foreground"}`} />
               </div>
               {stat.action}
             </div>
