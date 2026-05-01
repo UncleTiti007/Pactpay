@@ -7,6 +7,7 @@
     "loading": "Loading...",
     "processing": "Processing...",
     "submitting": "Submitting...",
+    "sending": "Sending...",
     "submit": "Submit",
     "confirm": "Confirm",
     "close": "Close",
@@ -639,8 +640,8 @@
       "disputeUpdateTitle": "New Dispute Message",
       "disputeUpdateMsg": "A Pactpay admin has posted a message in your dispute center.",
       "disputeResolvedTitle": "Dispute Resolved",
-      "disputeResolvedFreelancer": "The dispute for \"{{title}}\" has been resolved. Funds have been {{resolution}}.",
-      "disputeResolvedClient": "The dispute for \"{{title}}\" has been resolved. Outcome: {{resolution}}.",
+      "disputeResolvedFreelancer": "The dispute for \"{{title}}\" has been resolved. You have been awarded {{resolution}} of the milestone.",
+      "disputeResolvedClient": "The dispute for \"{{title}}\" has been resolved. You have been awarded {{resolution}} of the milestone.",
       "withdrawalApprovedMsg": "Your withdrawal of ${{amount}} has been approved and processed.",
       "withdrawalRejectedMsg": "Your withdrawal of ${{amount}} has been rejected. Funds have been returned to your wallet."
     },
@@ -649,7 +650,7 @@
       "refunded": "refunded to the client"
     },
     "success": {
-      "disputeResolved": "Dispute has been successfully {{resolution}}.",
+      "disputeResolved": "Dispute resolved with split {{resolution}}.",
       "kycApproved": "KYC approved for {{name}}",
       "withdrawalApproved": "Withdrawal approved and marked as completed",
       "withdrawalRejected": "Withdrawal rejected and funds refunded to user",
@@ -721,7 +722,15 @@
       "startConversation": "Start the conversation by dropping a message below.",
       "youAdmin": "You (Admin)",
       "replyPlaceholder": "Type your message to resolve this dispute...",
-      "visibilityMsg": "Messages sent here are visible to both the Client and the Freelancer."
+      "visibilityMsg": "Messages sent here are visible to both the Client and the Freelancer.",
+      "resolveBtn": "Resolve Dispute",
+      "resolveTitle": "Resolve Dispute",
+      "resolveDesc": "Specify the settlement split between the parties.",
+      "adminNotes": "Resolution Summary & Notes",
+      "notesPlaceholder": "Explain the reasoning for this split decision...",
+      "clientTotal": "Client gets",
+      "freelancerTotal": "Freelancer gets",
+      "confirmBtn": "Finalize Resolution"
     },
     "contracts": {
       "title": "All Contracts",
