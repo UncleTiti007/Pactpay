@@ -306,7 +306,7 @@ const Dashboard = () => {
                   {/* Filter chips */}
                   {myContracts.length > 0 && (
                     <div className="mb-4 flex flex-wrap gap-2">
-                      {["all", "active", "pending", "revision_requested", "completed", "cancelled"].map((s) => (
+                      {["all", "active", "accepted", "pending", "revision_requested", "completed", "cancelled"].map((s) => (
                         <button
                           key={s}
                           onClick={() => setContractFilter(s)}
@@ -378,7 +378,7 @@ const Dashboard = () => {
                   {/* Filter chips */}
                   {myJobs.length > 0 && (
                     <div className="mb-4 flex flex-wrap gap-2">
-                      {["all", "active", "pending", "completed", "cancelled"].map((s) => (
+                      {["all", "active", "accepted", "pending", "completed", "cancelled"].map((s) => (
                         <button
                           key={s}
                           onClick={() => setJobFilter(s)}

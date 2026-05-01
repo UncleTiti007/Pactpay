@@ -88,7 +88,8 @@
     "synced": "Synced",
     "supportTeam": "Support Team",
     "subject": "Subject",
-    "message": "Message"
+    "message": "Message",
+    "sending": "보내는 중..."
   },
   "nav": {
     "signIn": "로그인",

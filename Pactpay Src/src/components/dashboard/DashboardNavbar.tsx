@@ -18,11 +18,26 @@ import {
 import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
+// Resolves notification text (key or legacy sentence) at render time — never shows {{vars}}
+const resolveNotifText = (text: string, metadata: Record<string, any> | null | undefined, t: Function): string => {
+  if (!text) return "";
+  const meta = metadata || {};
+  const translated = t(text, meta);
+  if (translated.includes('{{')) {
+    return translated.replace(/{{(.*?)}}/g, (_, k) => {
+      const val = meta[k.trim()];
+      return val != null && val !== '' ? String(val) : '';
+    }).replace(/"\s*"/, '').replace(/\s{2,}/g, ' ').trim();
+  }
+  return translated;
+};
+
 const DashboardNavbar = () => {
   const { user, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const { t } = useTranslation();
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -40,7 +55,10 @@ const DashboardNavbar = () => {
           if (payload.new.user_id === user.id) {
             setNotifications(prev => [payload.new, ...prev].slice(0, 10));
             setUnreadCount(prev => prev + 1);
-            toast.info(payload.new.title, { description: payload.new.message, icon: <Bell className="h-4 w-4" /> });
+            toast.info(t(payload.new.title), { 
+              description: t(payload.new.message, payload.new.metadata || {}), 
+              icon: <Bell className="h-4 w-4" /> 
+            });
           }
         })
         .subscribe((status) => {
@@ -135,7 +153,7 @@ const DashboardNavbar = () => {
                 ) : (
                   notifications.map((n) => {
                     const [displayMessage, smartLink] = (n.message || "").split("|||");
-                    const fallbackTitle = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    const fallbackTitle = (n.type || 'system').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                     return (
                       <DropdownMenuItem key={n.id}
                         className={cn("flex items-start gap-3 p-4 cursor-pointer transition-all border-b border-border/10 last:border-0 outline-none",
@@ -151,14 +169,16 @@ const DashboardNavbar = () => {
                            n.type === 'dispute' ? <AlertCircle className="h-[1.1rem] w-[1.1rem]" /> :
                            <CheckCircle2 className="h-[1.1rem] w-[1.1rem]" />}
                         </div>
-                        <div className="flex flex-col flex-1 gap-1 min-w-0">
+                         <div className="flex flex-col flex-1 gap-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className={cn("text-sm font-bold truncate", !n.is_read ? "text-foreground" : "text-muted-foreground")}>
-                              {n.title || fallbackTitle}
+                              {resolveNotifText(n.title || fallbackTitle, n.metadata, t)}
                             </span>
                             {!n.is_read && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{displayMessage}</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                            {resolveNotifText(displayMessage, n.metadata, t)}
+                          </p>
                           <span className="text-[10px] font-medium text-muted-foreground/40 mt-1 flex items-center gap-1">{formatTimeAgo(n.created_at)}</span>
                         </div>
                       </DropdownMenuItem>

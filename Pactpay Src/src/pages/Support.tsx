@@ -170,8 +170,9 @@ const Support = () => {
       if (admins && admins.length > 0) {
         const notifications = admins.map(admin => ({
           user_id: admin.id,
-          title: t("support.notif.newMessageTitle"),
-          message: t("support.notif.newMessageMsg", { subject: selectedTicket.subject }),
+          title: "support.notif.newMessageTitle",
+          message: "support.notif.newMessageMsg",
+          metadata: { subject: selectedTicket.subject },
           type: "system",
           link: "/admin"
         }));

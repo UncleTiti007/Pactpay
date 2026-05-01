@@ -63,11 +63,26 @@ const InviteAccept = () => {
     if (user.email !== invite.invited_email) { toast.error(t("invite.wrongEmail", { email: user.email })); return; }
     if (!kycVerified) { toast.error(t("invite.kycRequired")); return; }
     setAccepting(true);
-    const { error: cError } = await supabase.from("contracts").update({ freelancer_id: user.id, status: "pending" }).eq("id", contract.id);
+    const { error: cError } = await supabase.from("contracts").update({ freelancer_id: user.id, status: "accepted" }).eq("id", contract.id);
     if (cError) { toast.error(t("invite.acceptFailed") + ": " + cError.message); setAccepting(false); return; }
+    
     const { error: iError } = await supabase.from("contract_invites").update({ accepted: true }).eq("id", invite.id);
     if (iError) { toast.error(t("invite.partialAcceptError") + ": " + iError.message); }
-    else { toast.success(t("invite.acceptedSuccess")); }
+    
+    await supabase.from("notifications").insert({
+      user_id: contract.client_id,
+      type: "update",
+      title: "contract.notif.acceptTitle",
+      message: "contract.notif.acceptMsg",
+      metadata: { name: user?.user_metadata?.full_name || user.email, title: contract.title },
+      link: `/contracts/${contract.id}`
+    });
+
+    await supabase.functions.invoke("send-email", {
+      body: { type: "freelancer_accepted", contract_id: contract.id }
+    });
+
+    toast.success(t("invite.acceptedSuccess"));
     navigate(`/contracts/${contract.id}`);
     setAccepting(false);
   };
@@ -96,9 +111,11 @@ const InviteAccept = () => {
     const { error: cError } = await supabase.from("contracts").update({ status: "cancelled" }).eq("id", contract.id);
     if (cError) { toast.error(t("invite.declineFailed") + ": " + cError.message); setAccepting(false); return; }
     await supabase.from("notifications").insert({
-      user_id: contract.client_id, type: "update",
-      title: t("invite.declinedNotifTitle"),
-      message: `${user?.user_metadata?.full_name || user.email} ${t("invite.declinedNotifMsg")} "${contract.title}".`,
+      user_id: contract.client_id, 
+      type: "update",
+      title: "contract.notif.declineTitle",
+      message: "contract.notif.declineMsg",
+      metadata: { name: user?.user_metadata?.full_name || user.email, title: contract.title },
       link: `/contracts/${contract.id}`
     });
     toast.info(t("invite.declinedInfo"));

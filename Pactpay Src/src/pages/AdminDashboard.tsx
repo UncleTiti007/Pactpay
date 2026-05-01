@@ -344,11 +344,11 @@ export default function AdminDashboard() {
 
     const contract = contracts.find(c_item => c_item.id === selectedAdminDispute.contract_id);
     if (contract) {
-      const parties = [contract.client_id, contract.freelancer_id].filter(Boolean);
-      const notifications_list = parties.map(pid => ({
+      const partiesToNotify = [contract.client_id, contract.freelancer_id].filter(Boolean);
+      const notifications_list = partiesToNotify.map(pid => ({
         user_id: pid,
-        title: t("admin.notif.disputeUpdateTitle"),
-        message: t("admin.notif.disputeUpdateMsg"),
+        title: "admin.notif.disputeUpdateTitle",
+        message: "admin.notif.disputeUpdateMsg",
         type: "system",
         link: `/contracts/${contract.id}`
       }));
@@ -427,8 +427,8 @@ export default function AdminDashboard() {
 
       // Notify both parties
       const participants = [
-        { id: contract_val.freelancer_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedFreelancer", { title: milestone_val.title || milestone_val.name, resolution: `${freelancerPercent}%` }) },
-        { id: contract_val.client_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedClient", { title: milestone_val.title || milestone_val.name, resolution: `${clientPercent}%` }) }
+        { id: contract_val.freelancer_id, title: "admin.notif.disputeResolvedTitle", msg: "admin.notif.disputeResolvedFreelancer", metadata: { title: milestone_val.title || milestone_val.name, resolution: `${freelancerPercent}%` } },
+        { id: contract_val.client_id, title: "admin.notif.disputeResolvedTitle", msg: "admin.notif.disputeResolvedClient", metadata: { title: milestone_val.title || milestone_val.name, resolution: `${clientPercent}%` } }
       ];
 
       for (const p of participants) {
@@ -438,6 +438,7 @@ export default function AdminDashboard() {
             type: "system",
             title: p.title,
             message: p.msg,
+            metadata: p.metadata || {},
             link: `/contracts/${contract_val.id}`
           });
         }
@@ -691,8 +692,8 @@ export default function AdminDashboard() {
                             <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">{n_item.type}</span>
                             <span className="text-[10px] text-muted-foreground italic">{t("common.justNow")}</span>
                           </div>
-                          <span className="text-xs font-bold text-foreground line-clamp-1">{n_item.title || t("admin.alerts.systemAlert")}</span>
-                          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{n_item.message}</p>
+                          <span className="text-xs font-bold text-foreground line-clamp-1">{t(n_item.title || "admin.alerts.systemAlert")}</span>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{t(n_item.message, n_item.metadata || {})} </p>
                         </DropdownMenuItem>
                       ))
                     )}

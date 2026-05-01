@@ -21,9 +21,10 @@ interface UserSearchProps {
   onSelect: (user: { id: string; full_name: string; email: string } | null) => void;
   onEmailChange: (email: string) => void;
   defaultValue?: string;
+  excludeUserId?: string;
 }
 
-export function UserSearch({ onSelect, onEmailChange, defaultValue = "" }: UserSearchProps) {
+export function UserSearch({ onSelect, onEmailChange, defaultValue = "", excludeUserId }: UserSearchProps) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(defaultValue);
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,10 +49,11 @@ export function UserSearch({ onSelect, onEmailChange, defaultValue = "" }: UserS
         .from("profiles")
         .select("id, full_name, email")
         .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
-        .limit(5);
+        .limit(10);
 
       if (!error && data) {
-        setProfiles(data);
+        const filtered = excludeUserId ? data.filter(u => u.id !== excludeUserId) : data;
+        setProfiles(filtered.slice(0, 5));
       }
       setLoading(false);
     };

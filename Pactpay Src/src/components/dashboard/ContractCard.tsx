@@ -22,6 +22,8 @@ const statusColors: Record<string, string> = {
   disputed: "bg-status-disputed/10 text-status-disputed dark:bg-status-disputed/20 border-status-disputed/30",
   cancelled: "bg-status-cancelled/10 text-status-cancelled/80 dark:bg-status-cancelled/20 dark:text-status-cancelled border-status-cancelled/30",
   rejected: "bg-status-cancelled/10 text-status-cancelled/80 dark:bg-status-cancelled/20 dark:text-status-cancelled border-status-cancelled/30",
+  accepted: "bg-teal-500/10 text-teal-600 dark:bg-teal-500/20 dark:text-teal-400 border-teal-500/30",
+  funded: "bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 border-indigo-500/30",
   revision_requested: "bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 border-amber-500/30",
 };
 

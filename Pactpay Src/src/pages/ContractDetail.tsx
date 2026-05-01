@@ -7,16 +7,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, RefreshCcw, XCircle, Send, Maximize2 } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
+import TopUpModal from "@/components/dashboard/TopUpModal";
 import { formatDate, cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-500/20 text-gray-400 border-gray-500/30",
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  accepted: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+  funded: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
   active: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
   disputed: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -57,9 +61,10 @@ const ContractDetail = () => {
 
   const [editingEmail, setEditingEmail] = useState(false);
   const [newInviteEmail, setNewInviteEmail] = useState("");
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
 
-  const [setIsDeleting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [selectedFreelancer, setSelectedFreelancer] = useState<any>(null);
 
@@ -73,7 +78,7 @@ const ContractDetail = () => {
   const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({});
   const [requestingRevision, setRequestingRevision] = useState<any>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
-  const [setSubmittingHistory] = useState(false);
+  const [isSubmittingHistory, setSubmittingHistory] = useState(false);
 
   const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
   const [newDisputeMessage, setNewDisputeMessage] = useState("");
@@ -249,8 +254,9 @@ const ContractDetail = () => {
         await supabase.from("notifications").insert({
           user_id: otherPartyId,
           type: "dispute",
-          title: t("contract.notif.disputeMessageTitle"),
-          message: t("contract.notif.disputeMessageMsg", { name: myName }),
+          title: "contract.notif.disputeMessageTitle",
+          message: "contract.notif.disputeMessageMsg",
+          metadata: { name: myName },
           link: `/contracts/${contract?.id}`
         });
       }
@@ -262,8 +268,9 @@ const ContractDetail = () => {
           .map(admin => ({
             user_id: admin.id,
             type: "dispute",
-            title: t("contract.notif.adminDisputeTitle"),
-            message: t("contract.notif.adminDisputeMsg", { name: myName, id: dispute.id.substring(0,8) }),
+            title: "contract.notif.adminDisputeTitle",
+            message: "contract.notif.adminDisputeMsg",
+            metadata: { name: myName, id: dispute.id.substring(0,8) },
             link: "/admin"
           }));
         
@@ -296,7 +303,7 @@ const ContractDetail = () => {
   const isFreelancer = user?.id === contract?.freelancer_id;
   const isInvited = user?.email?.toLowerCase() === (activeInvite?.invited_email || contract?.invite_email)?.toLowerCase();
   
-  const isFunded = contract?.status === 'active' || contract?.status === 'completed' || contract?.status === 'disputed';
+  const isFunded = ['funded', 'active', 'completed', 'disputed'].includes(contract?.status);
   const totalRequired = contract?.total_amount || 0;
 
   const handleFundContract = async () => {
@@ -319,28 +326,26 @@ const ContractDetail = () => {
         return;
       }
 
-      const newBalance = currentBalance - totalAmount;
-      const { error: updateErr } = await supabase.from("profiles").update({ wallet_balance: newBalance }).eq("id", user.id);
-      if (updateErr) throw new Error(t("contract.detail.error.balanceDeduction"));
-
-      const { error: cErr } = await supabase.from("contracts").update({ 
-        status: "active", 
-        platform_fee: platformFee,
-        funded_at: new Date().toISOString()
-      }).eq("id", id);
-      if (cErr) throw new Error(t("contract.detail.error.activateFailed"));
-
-      await supabase.from("transactions").insert([
-        { type: "escrow", amount: netAmount, from_user_id: user.id, metadata: { contract_id: id } },
-        { type: "fee", amount: platformFee, from_user_id: user.id, metadata: { contract_id: id, note: "2% platform fee" } }
-      ]);
+      // Use the new atomic RPC to fund the contract
+      const targetStatus = (contract.freelancer_id && !activeInvite) ? "active" : "funded";
+      
+      const { error: rpcErr } = await supabase.rpc("safe_fund_contract", {
+        p_contract_id: id,
+        p_user_id: user.id,
+        p_net_amount: netAmount,
+        p_platform_fee: platformFee,
+        p_new_status: targetStatus
+      });
+      
+      if (rpcErr) throw new Error(t("contract.detail.error.activateFailed") + ": " + rpcErr.message);
 
       if (contract.freelancer_id) {
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "deposit",
-          title: t("contract.notif.fundedTitle"),
-          message: t("contract.notif.fundedMsg", { title: contract.title }),
+          title: "contract.notif.fundedTitle",
+          message: "contract.notif.fundedMsg",
+          metadata: { title: contract.title },
           link: `/contracts/${id}`
         });
       }
@@ -373,11 +378,21 @@ const ContractDetail = () => {
       if (msErr) throw msErr;
 
       if (contract.freelancer_id) {
+        const { error: rpcErr } = await supabase.rpc("update_wallet_and_log", {
+          p_user_id: contract.freelancer_id,
+          p_amount: ms.amount,
+          p_type: 'release',
+          p_contract_id: contract.id,
+          p_milestone_id: ms.id
+        });
+        if (rpcErr) throw rpcErr;
+
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "milestone_approved",
-          title: t("contract.notif.milestoneReleasedTitle"),
-          message: t("contract.notif.milestoneReleasedMsg", { title: ms.title || ms.name, amount: ms.amount.toLocaleString() }),
+          title: "contract.notif.milestoneReleasedTitle",
+          message: "contract.notif.milestoneReleasedMsg",
+          metadata: { title: ms.title || ms.name, amount: ms.amount.toLocaleString() },
           link: `/contracts/${contract.id}`
         });
       }
@@ -455,8 +470,9 @@ const ContractDetail = () => {
       await supabase.from("notifications").insert({
         user_id: contract.client_id,
         type: "update",
-        title: t("contract.notif.milestoneSubmittedTitle"),
-        message: t("contract.notif.milestoneSubmittedMsg", { name: user?.user_metadata?.full_name || t("common.freelancer"), title: m?.title || m?.name }),
+        title: "contract.notif.milestoneSubmittedTitle",
+        message: "contract.notif.milestoneSubmittedMsg",
+        metadata: { name: user?.user_metadata?.full_name || t("common.freelancer"), title: m?.title || m?.name },
         link: `/contracts/${contract.id}`
       });
 
@@ -497,8 +513,9 @@ const ContractDetail = () => {
       await supabase.from("notifications").insert({
         user_id: contract.freelancer_id,
         type: "update",
-        title: t("contract.notif.revisionRequestedTitle"),
-        message: t("contract.notif.revisionRequestedMsg", { title: requestingRevision.title || requestingRevision.name, feedback: revisionFeedback.substring(0, 50) }),
+        title: "contract.notif.revisionRequestedTitle",
+        message: "contract.notif.revisionRequestedMsg",
+        metadata: { title: requestingRevision.title || requestingRevision.name, feedback: revisionFeedback.substring(0, 50) },
         link: `/contracts/${contract.id}`
       });
 
@@ -534,7 +551,10 @@ const ContractDetail = () => {
     try {
       const { error: cError } = await supabase
         .from("contracts")
-        .update({ freelancer_id: user.id, status: "pending" })
+        .update({ 
+          freelancer_id: user.id, 
+          status: contract.status === "funded" ? "active" : "pending" 
+        })
         .eq("id", contract.id);
 
       if (cError) throw cError;
@@ -556,8 +576,9 @@ const ContractDetail = () => {
       await supabase.from("notifications").insert({
         user_id: contract.client_id,
         type: "update",
-        title: t("contract.notif.acceptTitle"),
-        message: t("contract.notif.acceptMsg", { name: user?.user_metadata?.full_name || user.email, title: contract.title }),
+        title: "contract.notif.acceptTitle",
+        message: "contract.notif.acceptMsg",
+        metadata: { name: user?.user_metadata?.full_name || user.email, title: contract.title },
         link: `/contracts/${contract.id}`
       });
 
@@ -599,6 +620,37 @@ const ContractDetail = () => {
     }
   };
 
+  const handleCancelContract = async () => {
+    if (!contract) return;
+    setFunding(true);
+    try {
+      const { error: cError } = await supabase
+        .from("contracts")
+        .update({ status: "cancelled" })
+        .eq("id", contract.id);
+
+      if (cError) throw cError;
+
+      if (contract.freelancer_id) {
+        await supabase.from("notifications").insert({
+          user_id: contract.freelancer_id,
+          type: "update",
+          title: "contract.notif.cancelTitle",
+          message: "contract.notif.cancelMsg",
+          metadata: { name: user?.user_metadata?.full_name || user?.email, title: contract.title },
+          link: `/contracts/${contract.id}`
+        });
+      }
+
+      toast.success(t("contract.detail.cancelSuccess"));
+      navigate("/dashboard");
+    } catch (err: any) {
+      toast.error(t("contract.detail.cancelFailed") + ": " + err.message);
+    } finally {
+      setFunding(false);
+    }
+  };
+
   const handleSubmitDispute = async () => {
     if (!disputingMilestone || !disputeReason.trim()) {
       toast.error(t("contract.detail.error.disputeReason"));
@@ -632,8 +684,9 @@ const ContractDetail = () => {
     const notifications = parties.map(pid => ({
       user_id: pid,
       type: "dispute",
-      title: t("contract.notif.disputeRaisedTitle"),
-      message: t("contract.notif.disputeRaisedMsg", { name: user?.user_metadata?.full_name || t("common.aParty"), title: milestoneTitle }),
+      title: "contract.notif.disputeRaisedTitle",
+      message: "contract.notif.disputeRaisedMsg",
+      metadata: { name: user?.user_metadata?.full_name || t("common.aParty"), title: milestoneTitle },
       link: `/contracts/${id}`
     }));
     await supabase.from("notifications").insert(notifications);
@@ -653,6 +706,11 @@ const ContractDetail = () => {
     setSavingEmail(true);
     try {
       if (selectedFreelancer) {
+        if (selectedFreelancer.id === user.id) {
+          toast.error(t("contract.detail.error.selfAssign"));
+          setSavingEmail(false);
+          return;
+        }
         const { error: cError } = await supabase
           .from("contracts")
           .update({ 
@@ -674,8 +732,9 @@ const ContractDetail = () => {
         await supabase.from("notifications").insert({
           user_id: selectedFreelancer.id,
           type: "invite",
-          title: t("contract.notif.newInviteTitle"),
-          message: t("contract.notif.newInviteMsg", { title: contract.title }),
+          title: "contract.notif.newInviteTitle",
+          message: "contract.notif.newInviteMsg",
+          metadata: { title: contract.title },
           link: `/contracts/${id}`
         });
 
@@ -689,6 +748,12 @@ const ContractDetail = () => {
            toast.error(t("contract.detail.error.searchOrEmail"));
            setSavingEmail(false);
            return;
+        }
+
+        if (newInviteEmail.toLowerCase() === user.email?.toLowerCase()) {
+          toast.error(t("contract.detail.error.selfAssign"));
+          setSavingEmail(false);
+          return;
         }
 
         const { data: invite, error } = await supabase
@@ -785,7 +850,7 @@ const ContractDetail = () => {
           </div>
         )}
 
-        {contract.status === "pending" && isInvited && activeInvite && (
+        {(contract.status === "pending" || contract.status === "funded") && isInvited && activeInvite && (
           <div className="mb-8 rounded-xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-1">
@@ -845,6 +910,7 @@ const ContractDetail = () => {
               {editingEmail ? (
                 <div className="space-y-3">
                   <UserSearch 
+                    excludeUserId={user?.id}
                     onSelect={(selected_u) => {
                       setSelectedFreelancer(selected_u);
                       if (selected_u) setNewInviteEmail(selected_u.email);
@@ -1321,43 +1387,72 @@ const ContractDetail = () => {
           </div>
 
           <div className="space-y-6">
-            {isClient && contract.status === "pending" && !isFunded && (
+            {isClient && (contract.status === "pending" || contract.status === "accepted") && !isFunded && (
               <div className="glass-card p-5 border-primary/30 bg-primary/5">
-                <h3 className="mb-3 font-semibold text-foreground">{t("contract.detail.fundContract")}</h3>
-                <div className="space-y-2 mb-4 text-sm">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{t("createContract.reviewMilestonesTotal")}</span>
-                    <span className="text-foreground">${(contract.total_amount * 0.98).toLocaleString()}</span>
+                {contract.status === "pending" ? (
+                  <div className="text-center space-y-3 py-4">
+                    <div className="mx-auto w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                      <Clock className="h-5 w-5 text-yellow-500" />
+                    </div>
+                    <p className="text-sm text-muted-foreground px-4">
+                      {t("contract.detail.waitingForAcceptance")}
+                    </p>
                   </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{t("createContract.reviewPlatformFee")}</span>
-                    <span className="text-foreground">${(contract.total_amount * 0.02).toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-border/50 pt-2 flex justify-between font-semibold text-foreground">
-                    <span>{t("contract.detail.totalRequired")}</span>
-                    <span>${contract.total_amount?.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-xs mt-3 pt-2 border-t border-border/50">
-                    <span className="text-muted-foreground">{t("contract.detail.walletBalance")}</span>
-                    <span className={walletBalance >= totalRequired ? "text-green-400" : "text-red-400"}>
-                      ${walletBalance.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {!kycVerified ? (
-                  <p className="text-xs text-amber-400 text-center py-2">
-                    {t("contract.detail.kycRequiredToFund")} <button onClick={() => navigate("/profile")} className="underline">{t("contract.detail.checkStatus")}</button>
-                  </p>
-                ) : walletBalance >= totalRequired ? (
-                  <Button className="w-full" variant="hero" onClick={handleFundContract} disabled={funding}>
-                    {funding ? t("common.processing") : t("contract.detail.fundContractBtn")}
-                  </Button>
                 ) : (
-                  <Button className="w-full" variant="outline" onClick={() => navigate("/dashboard")}>
-                    {t("contract.detail.insufficientFundBtn")}
-                  </Button>
+                  <>
+                    <div className="flex items-center gap-2 mb-4 text-teal-400">
+                      <CheckCircle className="h-4 w-4" />
+                      <p className="text-sm font-medium">{t("contract.detail.freelancerAcceptedFundNow")}</p>
+                    </div>
+                    <h3 className="mb-3 font-semibold text-foreground">{t("contract.detail.fundContract")}</h3>
+                    <div className="space-y-2 mb-4 text-sm">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>{t("createContract.reviewMilestonesTotal")}</span>
+                        <span className="text-foreground">${(contract.total_amount * 0.98).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>{t("createContract.reviewPlatformFee")}</span>
+                        <span className="text-foreground">${(contract.total_amount * 0.02).toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-border/50 pt-2 flex justify-between font-semibold text-foreground">
+                        <span>{t("contract.detail.totalRequired")}</span>
+                        <span>${contract.total_amount?.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-xs mt-3 pt-2 border-t border-border/50">
+                        <span className="text-muted-foreground">{t("contract.detail.walletBalance")}</span>
+                        <span className={walletBalance >= totalRequired ? "text-green-400" : "text-red-400"}>
+                          ${walletBalance.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {!kycVerified ? (
+                      <p className="text-xs text-amber-400 text-center py-2">
+                        {t("contract.detail.kycRequiredToFund")} <button onClick={() => navigate("/profile")} className="underline">{t("contract.detail.checkStatus")}</button>
+                      </p>
+                    ) : walletBalance >= totalRequired ? (
+                      <Button className="w-full" variant="hero" onClick={handleFundContract} disabled={funding}>
+                        {funding ? t("common.processing") : t("contract.detail.fundContractBtn")}
+                      </Button>
+                    ) : (
+                      <Button className="w-full" variant="outline" onClick={() => setIsTopUpOpen(true)}>
+                        {t("contract.detail.insufficientFundBtn")}
+                      </Button>
+                    )}
+                  </>
                 )}
+                
+                <div className="mt-4 pt-4 border-t border-border/50">
+                  <Button 
+                    variant="ghost" 
+                    className="w-full text-xs text-destructive hover:text-destructive hover:bg-destructive/10" 
+                    onClick={handleCancelContract}
+                    disabled={funding}
+                  >
+                    <XCircle className="h-3 w-3 mr-1.5" />
+                    {t("contract.detail.cancelContractBtn")}
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1626,6 +1721,15 @@ const ContractDetail = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TopUpModal 
+        isOpen={isTopUpOpen} 
+        onClose={() => setIsTopUpOpen(false)} 
+        onSuccess={() => {
+          setIsTopUpOpen(false);
+          fetchContract();
+        }} 
+      />
     </div>
   );
 };

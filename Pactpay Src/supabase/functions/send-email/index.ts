@@ -478,6 +478,59 @@ serve(async (req) => {
         )
       );
     }
+    
+    // ── FREELANCER ACCEPTED ──────────────────────────────────────────────────
+    else if (type === "freelancer_accepted") {
+      if (!contract_id) throw new Error("Missing contract_id");
+
+      const { data: contract } = await supabase
+        .from("contracts")
+        .select("*")
+        .eq("id", contract_id)
+        .single();
+
+      if (!contract) throw new Error("Contract not found");
+
+      const { data: client } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", contract.client_id)
+        .single();
+
+      const { data: freelancer } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", contract.freelancer_id)
+        .single();
+
+      const freelancerName = freelancer?.full_name || "Your professional";
+      const contractLink = `${APP_URL}/contracts/${contract_id}`;
+
+      const body = `
+        <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 20px;">
+          <strong style="color:#ffffff;">${freelancerName}</strong> has accepted your contract invitation for <strong style="color:#ffffff;">${contract.title}</strong>.
+        </p>
+        <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 20px;">
+          The contract is now ready to be funded. Once you deposit the funds into escrow, the professional can begin working.
+        </p>
+        <div style="background:#0F1B2D;border-radius:10px;padding:16px;margin-bottom:8px;">
+          ${infoRow("Contract", contract.title)}
+          ${infoRow("Total Amount", `$${contract.total_amount?.toLocaleString()}`)}
+          ${infoRow("Status", "Accepted — Awaiting Payment")}
+        </div>`;
+
+      await sendEmail(
+        client?.email || "",
+        `${freelancerName} accepted your contract: ${contract.title}`,
+        emailTemplate(
+          "Contract Accepted!",
+          client?.full_name || "there",
+          body,
+          "Fund Contract Now",
+          contractLink
+        )
+      );
+    }
 
     else {
       throw new Error(`Unknown email type: ${type}`);

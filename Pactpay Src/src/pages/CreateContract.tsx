@@ -148,8 +148,9 @@ const CreateContract = () => {
         await supabase.from("notifications").insert({
           user_id: freelancerId,
           type: "invite",
-          title: t("contract.notif.newInviteTitle"),
-          message: t("contract.notif.newInviteMsg", { title }),
+          title: "contract.notif.newInviteTitle",
+          message: "contract.notif.newInviteMsg",
+          metadata: { title },
           link: `/contracts/${contract.id}`
         });
       }
@@ -167,7 +168,8 @@ const CreateContract = () => {
     setSaving(false);
   };
 
-  const canProceedStep1 = title && freelancerEmail;
+  const isSelfAssign = freelancerEmail.toLowerCase() === user?.email?.toLowerCase() || freelancerId === user?.id;
+  const canProceedStep1 = title && freelancerEmail && !isSelfAssign;
   const canProceedStep2 = milestones.every((m) => {
     const hasName = m.name.trim() !== "";
     const hasAmount =
@@ -283,6 +285,7 @@ const CreateContract = () => {
                 <div>
                   <Label htmlFor="freelancerEmail">{t("createContract.labelFreelancer")} <span className="text-destructive">*</span></Label>
                   <UserSearch
+                    excludeUserId={user?.id}
                     onSelect={(selectedUser) => {
                       if (selectedUser) {
                         setFreelancerEmail(selectedUser.email);
@@ -298,6 +301,12 @@ const CreateContract = () => {
                     defaultValue={freelancerEmail}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">{t("createContract.freelancerDesc")}</p>
+                  {(freelancerEmail.toLowerCase() === user?.email?.toLowerCase() || freelancerId === user?.id) && (
+                    <p className="mt-2 text-sm text-destructive font-medium flex items-center gap-1.5 animate-in shake duration-300">
+                      <AlertTriangle className="h-4 w-4" />
+                      {t("contract.detail.error.selfAssign")}
+                    </p>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button type="submit" variant="hero" disabled={!canProceedStep1}>

@@ -89,7 +89,9 @@ const ActivityFeed = () => {
           message = t("activity.escrowFundedMsg", { amount: tx.amount.toLocaleString() });
         } else {
           title = tx.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          message = `$${tx.amount.toLocaleString()}`;
+          const isDeduction = isFromMe && tx.type === 'fee';
+          const sign = isDeduction ? '-' : '';
+          message = `${sign}$${Math.abs(tx.amount).toLocaleString()}`;
         }
 
         return { id: `tx-${tx.id}`, type: type || tx.type, title, message, created_at: tx.created_at, category: 'transaction' };
@@ -97,13 +99,39 @@ const ActivityFeed = () => {
 
       const merged = [
         ...(notifications || []).map(n => {
-          const [displayMessage, smartLink] = (n.message || "").split("|||");
-          let title = n.title;
-          if (!title) {
-            title = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          const [rawMessage, smartLink] = (n.message || "").split("|||");
+          const metadata = n.metadata || {};
+
+          // Resolve title: try as i18n key, fallback to type-based label
+          let title = "";
+          if (n.title) {
+            const translated = t(n.title, metadata);
+            title = translated;
+          } else {
+            title = (n.type || 'system').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             if (title === 'System') title = 'Notification';
           }
-          return { ...n, title, message: displayMessage, smartLink, category: 'notification' };
+
+          // Resolve message: try as i18n key with metadata vars, then manually interpolate
+          let message = rawMessage || "";
+          if (message) {
+            // Try t() — works for new-style keys like "contract.notif.newInviteMsg"
+            const translated = t(message, metadata);
+            if (translated !== message) {
+              // t() found and translated the key
+              message = translated;
+            } else if (message.includes('{{') && Object.keys(metadata).length > 0) {
+              // t() returned same string (key not found), try manual interpolation with metadata
+              message = message.replace(/{{(.*?)}}/g, (_, k) => {
+                const val = metadata[k.trim()];
+                return val != null ? String(val) : `{{${k}}}`;
+              });
+            }
+            // At this point, if {{title}} still remains it means metadata had no title — leave as-is
+            // The database SQL fix will resolve these permanently
+          }
+
+          return { ...n, title, message, smartLink, category: 'notification' };
         }),
         ...transActivities
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -165,8 +193,12 @@ const ActivityFeed = () => {
                       <Icon className={`h-4 w-4 ${color}`} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground leading-snug mb-0.5 group-hover:text-primary transition-colors">{item.title}</p>
-                      <p className="text-[13px] text-muted-foreground leading-snug group-hover:text-foreground/80 transition-colors">{item.message}</p>
+                      <p className="text-sm font-semibold text-foreground leading-snug mb-0.5 group-hover:text-primary transition-colors">
+                        {item.title}
+                      </p>
+                      <p className="text-[13px] text-muted-foreground leading-snug group-hover:text-foreground/80 transition-colors">
+                        {item.message}
+                      </p>
                       <p className="mt-1 text-[10px] items-center flex gap-1 text-muted-foreground/50 font-medium">
                         <span className="capitalize">{item.category === 'transaction' ? t("activity.transaction") : t("activity.notification")}</span>
                         <span>•</span>
