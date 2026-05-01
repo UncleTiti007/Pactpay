@@ -19,7 +19,13 @@
     "required": "Required",
     "optional": "Optional",
     "unknown": "Unknown",
-    "error": "Error",
+    "error": {
+      "0": "E",
+      "1": "r",
+      "2": "r",
+      "3": "o",
+      "4": "r"
+    },
     "success": "Success",
     "contract": "Contract",
     "milestone": "Milestone",
@@ -80,7 +86,15 @@
     },
     "filter": {
       "all": "All"
-    }
+    },
+    "unexpectedError": "Unexpected Error",
+    "locked": "Locked",
+    "noResults": "No Results",
+    "selected": "Selected",
+    "synced": "Synced",
+    "supportTeam": "Support Team",
+    "subject": "Subject",
+    "message": "Message"
   },
   "nav": {
     "signIn": "Sign In",
@@ -248,7 +262,45 @@
     "onlyImagesAndPdf": "Only images (JPEG, PNG, WebP) and PDFs are allowed.",
     "uploadFailed": "Upload failed: {{message}}",
     "someUploadsFailed": "Some documents failed to upload. Please try again.",
-    "failedSaveProfile": "Failed to save profile: {{message}}"
+    "failedSaveProfile": "Failed to save profile: {{message}}",
+    "error": {
+      "fileTooLarge": "File Too Large",
+      "imagesOnly": "Images Only",
+      "invalidFormat": "Invalid Format",
+      "uploadFailed": "Upload Failed",
+      "avatarUploadFailed": "Avatar Upload Failed",
+      "docsFailed": "Docs Failed",
+      "saveFailed": "Save Failed",
+      "notAdult": "Not Adult"
+    },
+    "steps": {
+      "personal": "Personal",
+      "account": "Account",
+      "identity": "Identity"
+    },
+    "success": {
+      "title": "Title",
+      "desc": "Desc",
+      "btn": "Btn"
+    },
+    "personalInfo": "Personal Info",
+    "placeholders": {
+      "fullName": "Full Name",
+      "phone": "Phone Number",
+      "dob": "Date of Birth",
+      "country": "Country",
+      "accountName": "Account Name",
+      "idNumber": "ID Number"
+    },
+    "nameLockedMsg": "Name Locked Message",
+    "profilePic": "Profile Pic",
+    "accountTypeTitle": "Account Type Title",
+    "businessName": "Business Name",
+    "regNumber": "Reg Number",
+    "identityVerification": "Identity Verification",
+    "selfie": "Selfie",
+    "maxFileSizeNote": "Max File Size Note",
+    "submitBtn": "Submit"
   },
   "dashboard": {
     "noFilteredContracts": "No {{status}} contracts",
@@ -290,7 +342,17 @@
       "incompleteMsg": "Identity incomplete: Please complete your KYC.",
       "completeBtn": "Complete KYC"
     },
-    "lockedFeatures": "Some features are locked during verification"
+    "lockedFeatures": "Some features are locked during verification",
+    "noRecentActivity": "No Recent Activity",
+    "contractCreated": "Contract Created",
+    "contractUpdated": "Contract Updated",
+    "paymentReceived": "Payment Received",
+    "paymentSent": "Payment Sent",
+    "milestoneCompleted": "Milestone Completed",
+    "totalEarnings": "Total Earnings",
+    "activeContracts": "Active Contracts",
+    "pendingApprovals": "Pending Approvals",
+    "successRate": "Success Rate"
   },
   "stats": {
     "walletBalance": "Wallet Balance",
@@ -405,7 +467,48 @@
     "noMilestones": "No milestones yet",
     "milestoneHistory": "Milestone History",
     "submissionHistory": "Submission",
-    "revisionHistory": "Revision Request"
+    "revisionHistory": "Revision Request",
+    "error": {
+      "loadingContract": "Loading Contract",
+      "notFound": "Not Found",
+      "acceptFailed": "Accept Failed",
+      "rejectFailed": "Reject Failed"
+    },
+    "detail": {
+      "unauthorizedTitle": "Unauthorized Title",
+      "unauthorizedMsg": "Unauthorized Message",
+      "notFoundTitle": "Not Found Title",
+      "notFoundMsg": "Not Found Message",
+      "title": "Title",
+      "subtitle": "Subtitle",
+      "status": "Status",
+      "activityTab": "Activity Tab",
+      "milestonesTab": "Milestones Tab",
+      "messagesTab": "Messages Tab",
+      "fundContract": "Fund Contract",
+      "insufficientBalance": "Insufficient Balance",
+      "payBtn": "Pay",
+      "contractDetails": "Contract Details",
+      "noMilestones": "No Milestones",
+      "markCompletedBtn": "Mark Completed",
+      "disputeBtn": "Dispute"
+    },
+    "status": {
+      "draft": "Draft",
+      "pending": "Pending",
+      "active": "Active",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "disputed": "Disputed"
+    },
+    "success": {
+      "accepted": "Accepted",
+      "rejected": "Rejected"
+    },
+    "action": {
+      "accept": "Accept",
+      "reject": "Reject"
+    }
   },
   "createContract": {
     "title": "Create New Contract",
@@ -496,8 +599,8 @@
     "languageSaved": "Language updated successfully!"
   },
   "admin": {
-    "title": "Admin Control Panel",
-    "subtitle": "Platform overview and high-level system management",
+    "title": "Title",
+    "subtitle": "Subtitle",
     "withdrawFees": "Withdraw Platform Fees",
     "openDisputes": "Open Disputes",
     "kycPending": "KYC Pending",
@@ -526,7 +629,9 @@
       "updateStatus": "Failed to update user status",
       "invalidAmount": "Please enter a valid amount",
       "insufficientEarnings": "Insufficient net earnings to withdraw this amount",
-      "processPayout": "Failed to process payout"
+      "processPayout": "Failed to process payout",
+      "failedToggle": "Failed Toggle",
+      "noProfile": "No Profile"
     },
     "notif": {
       "supportReplyTitle": "New Support Message",
@@ -552,7 +657,10 @@
       "userStatusUpdated": "User account status updated to {{status}}",
       "withdrawn": "Successfully withdrawn ${{amount}} from platform earnings",
       "statusUpdated": "Ticket status updated to {{status}}",
-      "copied": "Reference copied to clipboard"
+      "copied": "Reference copied to clipboard",
+      "usersDeactivated": "Users Deactivated",
+      "usersLocked": "Users Locked",
+      "usersActive": "Users Active"
     },
     "kyc": {
       "viewPDF": "View PDF Document",
@@ -634,7 +742,16 @@
       "actionsLabel": "Account Actions",
       "deactivate": "Deactivate Account",
       "lock": "Lock Account",
-      "reactivate": "Reactivate Account"
+      "reactivate": "Reactivate Account",
+      "bulkActions": "Bulk Actions",
+      "table": {
+        "user": "User",
+        "role": "Role",
+        "status": "Status",
+        "joined": "Joined",
+        "actions": "Actions"
+      },
+      "noUsers": "No Users"
     },
     "ledger": {
       "title": "Master Ledger",
@@ -667,6 +784,40 @@
         "resolved": "Resolved",
         "closed": "Closed"
       }
+    },
+    "confirm": {
+      "unlockSelected": "Unlock Selected",
+      "lockSelected": "Lock Selected",
+      "deactivateSelected": "Deactivate Selected",
+      "activateSelected": "Activate Selected",
+      "unlockUser": "Unlock User",
+      "lockUser": "Lock User",
+      "deactivateUser": "Deactivate User",
+      "activateUser": "Activate User"
+    },
+    "status": {
+      "deactivated": "Deactivated",
+      "locked": "Locked",
+      "active": "Active"
+    },
+    "action": {
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "lock": "Lock",
+      "unlock": "Unlock"
+    },
+    "role": {
+      "admin": "Admin"
+    },
+    "searchPlaceholder": "Search...",
+    "statusAll": "Status All",
+    "statusActive": "Status Active",
+    "statusLocked": "Status Locked",
+    "statusDeactivated": "Status Deactivated",
+    "tab": {
+      "users": "Users",
+      "kyc": "Kyc",
+      "system": "System"
     }
   },
   "invite": {
@@ -686,7 +837,32 @@
     "loginToAccept": "Please sign in to accept this invitation.",
     "signIn": "Sign In to Accept",
     "invalidInvite": "This invitation link is invalid or has expired.",
-    "loading": "Loading invitation..."
+    "loading": "Loading invitation...",
+    "error": {
+      "loadingContract": "Loading Contract",
+      "acceptFailed": "Accept Failed"
+    },
+    "notFoundTitle": "Not Found Title",
+    "notFoundMsg": "Not Found Message",
+    "acceptedNotifTitle": "Accepted Notification Title",
+    "acceptedNotifMsg": "Accepted Notification Message",
+    "acceptedInfo": "Accepted Info",
+    "declineFailed": "Decline Failed",
+    "declinedNotifTitle": "Declined Notification Title",
+    "declinedNotifMsg": "Declined Notification Message",
+    "declinedInfo": "Declined Info",
+    "wantsToWorkWith": "Wants To Work With",
+    "kycRequiredTitle": "Kyc Required Title",
+    "kycPendingMsg": "Kyc Pending Message",
+    "kycRequiredMsg": "Kyc Required Message",
+    "completeKYCNow": "Complete K Y C Now",
+    "contractLabel": "Contract Label",
+    "clientLabel": "Client Label",
+    "totalAmount": "Total Amount",
+    "milestonesLabel": "Milestones Label",
+    "kycPendingBtn": "Kyc Pending",
+    "kycRequiredBtn": "Kyc Required",
+    "declineInvitation": "Decline Invitation"
   },
   "support": {
     "title": "Help & Support",
@@ -712,7 +888,32 @@
     "contract": "Contract",
     "payment": "Payment",
     "kyc": "KYC / Verification",
-    "other": "Other"
+    "other": "Other",
+    "error": {
+      "loadTickets": "Load Tickets",
+      "loadMessages": "Load Messages",
+      "sendMessage": "Send Message",
+      "closeTicket": "Close Ticket",
+      "createTicket": "Create Ticket"
+    },
+    "notif": {
+      "newMessageTitle": "New Message Title",
+      "newMessageMsg": "New Message Message"
+    },
+    "success": {
+      "closed": "Closed",
+      "created": "Created"
+    },
+    "newTicketBtn": "New Ticket",
+    "searchPlaceholder": "Search...",
+    "selectTicketMsg": "Select Ticket Message",
+    "ticketId": "Ticket Id",
+    "closeTicketBtn": "Close Ticket",
+    "backToList": "Back To List",
+    "typeMessagePlaceholder": "Type your message...",
+    "modalTitle": "Modal Title",
+    "modalSubtitle": "Modal Subtitle",
+    "submitBtn": "Submit"
   },
   "transactions": {
     "title": "Transactions",
@@ -744,7 +945,8 @@
     "description": "Description",
     "fundsReleased": "Funds Released",
     "paymentReceived": "Payment Received",
-    "milestonePayment": "Milestone payment to {{name}}"
+    "milestonePayment": "Milestone payment to {{name}}",
+    "loading": "Loading"
   },
   "modals": {
     "topup": {
@@ -878,5 +1080,32 @@
       "content1": "The identity documents you provide during KYC are used solely for verification purposes. These documents are stored securely using industry-standard encryption.",
       "content2": "Access to your sensitive documents is strictly restricted to authorised Pactpay compliance administrators. We do not sell or lease your identity data to third-party marketing companies."
     }
+  },
+  "withdraw": {
+    "error": {
+      "noBankDetails": "No Bank Details",
+      "insufficientFunds": "Insufficient Funds",
+      "loadFailed": "Load Failed",
+      "requestFailed": "Request Failed"
+    },
+    "success": {
+      "requested": "Requested"
+    },
+    "title": "Title",
+    "desc": "Desc",
+    "availableToWithdraw": "Available To Withdraw",
+    "amountLabel": "Amount Label",
+    "amountPlaceholder": "Amount",
+    "feeInfo": "Fee Info",
+    "totalDeduction": "Total Deduction",
+    "bankDetailsTitle": "Bank Details Title",
+    "bankDetailsMissing": "Bank Details Missing",
+    "bankDetailsAction": "Bank Details Action",
+    "cancelBtn": "Cancel",
+    "submitBtn": "Submit"
+  },
+  "notfound": {
+    "title": "Title",
+    "returnHome": "Return Home"
   }
 }

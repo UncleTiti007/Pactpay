@@ -190,7 +190,12 @@ const CreateContract = () => {
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
       <div className="container mx-auto max-w-2xl px-4 py-6 md:py-12">
-        <h1 className="mb-6 md:mb-8 text-2xl md:text-3xl font-bold text-foreground tracking-tight">{t("createContract.title")}</h1>
+        <div className="mb-6 md:mb-8 flex items-center gap-4">
+          <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 md:h-10 md:w-10 hover:bg-muted" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 md:h-5 md:w-5" />
+          </Button>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight m-0">{t("createContract.title")}</h1>
+        </div>
 
         {!kycVerified && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-4">
