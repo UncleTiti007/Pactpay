@@ -1,8 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { Calendar, DollarSign } from "lucide-react";
-
 import { formatDate } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface ContractCardProps {
   id: string;
@@ -15,23 +15,28 @@ interface ContractCardProps {
 }
 
 const statusColors: Record<string, string> = {
-  draft: "bg-status-draft/20 text-status-draft border-status-draft/30",
-  pending: "bg-status-pending/20 text-status-pending border-status-pending/30",
-  active: "bg-status-active/20 text-status-active border-status-active/30",
-  completed: "bg-status-completed/20 text-status-completed border-status-completed/30",
-  disputed: "bg-status-disputed/20 text-status-disputed border-status-disputed/30",
-  cancelled: "bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30",
-  rejected: "bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30",
-  revision_requested: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  draft: "bg-status-draft/10 text-status-draft/80 dark:bg-status-draft/20 dark:text-status-draft border-status-draft/30",
+  pending: "bg-status-pending/10 text-status-pending dark:bg-status-pending/20 border-status-pending/30",
+  active: "bg-status-active/10 text-status-active dark:bg-status-active/20 border-status-active/30",
+  completed: "bg-status-completed/10 text-status-completed dark:bg-status-completed/20 border-status-completed/30",
+  disputed: "bg-status-disputed/10 text-status-disputed dark:bg-status-disputed/20 border-status-disputed/30",
+  cancelled: "bg-status-cancelled/10 text-status-cancelled/80 dark:bg-status-cancelled/20 dark:text-status-cancelled border-status-cancelled/30",
+  rejected: "bg-status-cancelled/10 text-status-cancelled/80 dark:bg-status-cancelled/20 dark:text-status-cancelled border-status-cancelled/30",
+  revision_requested: "bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 border-amber-500/30",
 };
 
 const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyName, disabled }: ContractCardProps) => {
+  const { t } = useTranslation();
+
+  const statusKey = status as keyof typeof statusColors;
+  const translatedStatus = t(`common.status.${status}`, { defaultValue: status });
+
   const CardContent = (
     <>
       <div className="mb-3 flex items-start justify-between">
         <h3 className="font-semibold text-foreground">{title}</h3>
-        <Badge variant="outline" className={statusColors[status] || statusColors.draft}>
-          {status}
+        <Badge variant="outline" className={statusColors[statusKey] || statusColors.draft}>
+          {translatedStatus}
         </Badge>
       </div>
       <p className="mb-3 text-sm text-muted-foreground">with {otherPartyName}</p>
@@ -51,11 +56,7 @@ const ContractCard = ({ id, title, status, total_amount, deadline, otherPartyNam
   );
 
   if (disabled) {
-    return (
-      <div className="glass-card block p-5 opacity-70 grayscale-[0.3] cursor-not-allowed">
-        {CardContent}
-      </div>
-    );
+    return <div className="glass-card block p-5 opacity-70 grayscale-[0.3] cursor-not-allowed">{CardContent}</div>;
   }
 
   return (

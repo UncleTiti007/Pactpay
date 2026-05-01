@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import i18n from "@/i18n";
 
 interface AuthContextType {
   user: User | null;
@@ -34,12 +35,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('account_status')
+        .select('account_status, language')
         .eq('id', userId)
         .maybeSingle();
       
       if (data?.account_status) {
         setAccountStatus(data.account_status);
+      }
+
+      // Apply saved language preference
+      if (data?.language && data.language !== i18n.language) {
+        i18n.changeLanguage(data.language);
+        localStorage.setItem('pactpay_language', data.language);
       }
     } catch (err) {
       console.error("Error fetching account status:", err);

@@ -10,10 +10,10 @@ import TopUpModal from "@/components/dashboard/TopUpModal";
 import WithdrawModal from "@/components/dashboard/WithdrawModal";
 import PendingApprovalsModal from "@/components/dashboard/PendingApprovalsModal";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText, Bell } from "lucide-react";
+import { Plus, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockedDashboardOverlay from "@/components/dashboard/LockedDashboardOverlay";
-import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface Contract {
   id: string;
@@ -31,6 +31,7 @@ const Dashboard = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loadingContracts, setLoadingContracts] = useState(true);
   const [walletBalance, setWalletBalance] = useState(0);
@@ -51,9 +52,8 @@ const Dashboard = () => {
     if (!loading && !user) {
       navigate("/auth");
     }
-  }, [user, loading]);
+  }, [user, loading, navigate]);
 
-  // Refetch every time user navigates to dashboard — fixes stale data after delete
   useEffect(() => {
     if (user) fetchContracts();
   }, [user, location.key]);
@@ -82,7 +82,7 @@ const Dashboard = () => {
           uniqueContracts.map(async (c: any) => {
             try {
               const otherId = c.client_id === user.id ? c.freelancer_id : c.client_id;
-              let otherName = "Pending";
+              let otherName = t("common.pending");
               if (otherId) {
                 const { data: profile } = await supabase
                   .from("profiles")
@@ -90,14 +90,14 @@ const Dashboard = () => {
                   .eq("id", otherId)
                   .maybeSingle();
 
-                otherName = profile?.full_name || c.invite_email || "Unknown User";
+                otherName = profile?.full_name || c.invite_email || t("common.unknownUser");
               } else {
-                otherName = c.invite_email || "Awaiting acceptance";
+                otherName = c.invite_email || t("dashboard.awaitingAcceptance");
               }
               return { ...c, otherPartyName: otherName };
             } catch (err) {
               console.error("Error enriching contract:", err);
-              return { ...c, otherPartyName: c.invite_email || "Unknown" };
+              return { ...c, otherPartyName: c.invite_email || t("common.unknown") };
             }
           })
         );
@@ -106,17 +106,14 @@ const Dashboard = () => {
         setContracts([]);
       }
 
-      // Fetch profile: wallet, KYC status, and bank info
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
         .select("wallet_balance, kyc_verified, id_doc_front_url, bank_name, bank_account_name, bank_account_number, consent_given")
         .eq("id", user.id)
         .maybeSingle();
       
       if (profile) {
-        // Enforce consent check
         if (!profile.consent_given) {
-          console.log("Dashboard: Consent not given, redirecting...");
           navigate("/consent" + (location.pathname !== "/dashboard" ? `?redirect=${encodeURIComponent(location.pathname)}` : ""));
           return;
         }
@@ -131,18 +128,13 @@ const Dashboard = () => {
         });
       }
 
-      // Total earned/spent
       const freelancerTxsQuery = supabase.from("transactions").select("amount").eq("to_user_id", user.id).eq("type", "release");
       const clientTxsQuery = supabase.from("transactions").select("amount").eq("from_user_id", user.id).eq("type", "release");
       
-      const [{ data: earnedTxs }, { data: spentTxs }] = await Promise.all([freelancerTxsQuery, clientTxsQuery]);
-      
+      const [{ data: earnedTxs }] = await Promise.all([freelancerTxsQuery, clientTxsQuery]);
       const earned = earnedTxs?.reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
-      const spent = spentTxs?.reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
-      
       setTotalEarned(earned);
 
-      // Pending action count - milestones in review where user is either client or freelancer
       const { data: milestonesInReview, count } = await supabase
         .from("milestones")
         .select("id, title, amount, contract_id, contracts!inner(title, client_id, freelancer_id)", { count: "exact" })
@@ -163,10 +155,9 @@ const Dashboard = () => {
   const firstName =
     user?.user_metadata?.full_name?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
-    "Explorer";
+    t("common.explorer");
 
   const myContracts = contracts.filter((c) => c.client_id === user?.id);
-  // myJobs = all contracts where user is the freelancer (all statuses — filter chips handle visibility)
   const myJobs = contracts.filter((c) => c.freelancer_id === user?.id);
   const myInvitations = contracts.filter((c) => 
     (c.freelancer_id === user?.id || c.invite_email?.toLowerCase() === user?.email?.toLowerCase()) && 
@@ -179,16 +170,16 @@ const Dashboard = () => {
   if (loading)
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        Loading...
+        {t("common.loading")}
       </div>
     );
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour >= 0 && hour < 12) return { text: "Good morning", emoji: "🌅" };
-    if (hour >= 12 && hour < 17) return { text: "Good afternoon", emoji: "☀️" };
-    if (hour >= 17 && hour < 21) return { text: "Good evening", emoji: "🌆" };
-    return { text: "Good night", emoji: "🌙" };
+    if (hour >= 0 && hour < 12) return { text: t("dashboard.greetings.morning"), emoji: "🌅" };
+    if (hour >= 12 && hour < 17) return { text: t("dashboard.greetings.afternoon"), emoji: "☀️" };
+    if (hour >= 17 && hour < 21) return { text: t("dashboard.greetings.evening"), emoji: "🌆" };
+    return { text: t("dashboard.greetings.night"), emoji: "🌙" };
   };
 
   const greeting = getGreeting();
@@ -203,29 +194,29 @@ const Dashboard = () => {
         {!kycVerified && (
           <div className={`mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-lg border px-4 py-3 gap-3 ${
             isPendingApproval 
-              ? "border-amber-500/50 bg-amber-500/20 text-amber-200" 
-              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+              ? "border-amber-500/50 bg-amber-500/20 text-amber-800 dark:text-amber-200" 
+              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
           }`}>
             <div className="flex items-start sm:items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0" />
               <span className="font-medium">
                 {isPendingApproval 
-                  ? "Verification Pending: Your account is currently in 'View-Only' mode while our team reviews your documents."
-                  : "Identity Incomplete: Please complete your KYC to unlock dashboard features."}
+                  ? t("dashboard.kyc.pendingMsg")
+                  : t("dashboard.kyc.incompleteMsg")}
               </span>
               {!isPendingApproval && (
                 <button
                   onClick={() => navigate("/kyc")}
-                  className="underline font-bold ml-1 hover:text-amber-300 transition-colors whitespace-nowrap"
+                  className="underline font-bold ml-1 hover:text-amber-600 dark:hover:text-amber-300 transition-colors whitespace-nowrap"
                 >
-                  Complete KYC
+                  {t("dashboard.kyc.completeBtn")}
                 </button>
               )}
             </div>
             {kycVerified && (
               <button
                 onClick={() => setKycBannerDismissed(true)}
-                className="text-amber-400 hover:text-amber-300"
+                className="text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -240,8 +231,8 @@ const Dashboard = () => {
               {greeting.text}, {firstName} {greeting.emoji}
             </h1>
             {isPendingApproval && (
-              <p className="text-xs text-amber-500/80 flex items-center gap-1">
-                <Lock className="h-3 w-3" /> Dashboard features are locked during verification
+              <p className="text-xs text-amber-600 dark:text-amber-500/80 flex items-center gap-1">
+                <Lock className="h-3 w-3" /> {t("dashboard.lockedFeatures")}
               </p>
             )}
           </div>
@@ -249,13 +240,13 @@ const Dashboard = () => {
             <Button variant="hero" asChild disabled={isPendingApproval} className={`h-11 sm:h-10 ${isPendingApproval ? "opacity-50 cursor-not-allowed pointer-events-none" : ""}`}>
               <Link to="/contracts/new">
                 <Plus className="mr-2 h-4 w-4" />
-                New Contract
+                {t("dashboard.actions.newContract")}
               </Link>
             </Button>
             <Button variant="outline" className="h-11 sm:h-10 border-border/50" disabled={isPendingApproval} asChild>
               <Link to="/transactions">
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
-                View All Transactions
+                {t("dashboard.actions.viewTransactions")}
               </Link>
             </Button>
           </div>
@@ -285,7 +276,7 @@ const Dashboard = () => {
               <Tabs defaultValue="contracts">
                 <TabsList className={`mb-4 bg-card-elevated border border-border/50 ${isPendingApproval ? "opacity-50 pointer-events-none" : ""}`}>
                   <TabsTrigger value="contracts" className="relative">
-                    My Contracts
+                    {t("dashboard.tabs.myContracts")}
                     {myContracts.length > 0 && (
                       <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                         {myContracts.length}
@@ -293,7 +284,7 @@ const Dashboard = () => {
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="invitations" className="relative">
-                    Invitations
+                    {t("dashboard.tabs.invitations")}
                     {myInvitations.length > 0 && (
                       <span className="ml-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                         {myInvitations.length}
@@ -301,7 +292,7 @@ const Dashboard = () => {
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="jobs" className="relative">
-                    My Jobs
+                    {t("dashboard.tabs.myJobs")}
                     {myJobs.length > 0 && (
                       <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                         {myJobs.length}
@@ -325,31 +316,33 @@ const Dashboard = () => {
                               : "bg-card text-muted-foreground border-border hover:border-primary/40"
                           }`}
                         >
-                          {s === "all" ? `All (${myContracts.length})` : s === "revision_requested" ? "Revision Requested" : s}
+                          {s === "all" ? `${t("common.filter.all")} (${myContracts.length})` : t(`common.status.${s}`, { defaultValue: s })}
                         </button>
                       ))}
                     </div>
                   )}
                   {loadingContracts ? (
-                    <p className="text-muted-foreground italic">Fetching your contracts...</p>
+                    <p className="text-muted-foreground italic">{t("dashboard.contracts.loading")}</p>
                   ) : myContracts.length === 0 ? (
-                    <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/30 text-center p-6 space-y-4">
+                    <div className="flex h-48 flex-col items-center justify-center glass-card border-dashed text-center p-6 space-y-4">
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                         <Plus className="h-5 w-5 text-primary" />
                       </div>
                       <div className="space-y-1">
-                        <p className="font-semibold text-foreground">No contracts found</p>
-                        <p className="text-sm text-muted-foreground">Ready to start your next collaboration?</p>
+                        <p className="font-semibold text-foreground">{t("dashboard.contracts.none")}</p>
+                        <p className="mb-6 text-sm text-muted-foreground/80 dark:text-muted-foreground/60">
+                          {t("dashboard.contracts.noneDesc")}
+                        </p>
                       </div>
                       <Button variant="hero" size="sm" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 pointer-events-none" : ""}>
-                        <Link to="/contracts/new">Create your first contract</Link>
+                        <Link to="/contracts/new">{t("dashboard.contracts.createFirst")}</Link>
                       </Button>
                     </div>
                   ) : (() => {
                     const filtered = contractFilter === "all" ? myContracts : myContracts.filter(c => c.status === contractFilter);
                     return filtered.length === 0 ? (
                       <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
-                        No {contractFilter} contracts
+                        {t("dashboard.contracts.noSpecific", { filter: contractFilter })}
                       </div>
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -364,12 +357,12 @@ const Dashboard = () => {
                 {/* Invitations Tab */}
                 <TabsContent value="invitations">
                   {loadingContracts ? (
-                    <p className="text-muted-foreground">Loading...</p>
+                    <p className="text-muted-foreground">{t("common.loading")}</p>
                   ) : myInvitations.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-center px-4">
-                      <FileText className="mb-2 h-8 w-8 opacity-20" />
-                      <p className="mb-1">No pending invitations</p>
-                      <p className="text-xs opacity-60">New invitations from clients will appear here for you to accept or reject.</p>
+                    <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center px-4">
+                      <MessageSquareText className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
+                      <p className="mb-1">{t("dashboard.invitations.none")}</p>
+                      <p className="text-xs opacity-80 dark:opacity-60">{t("dashboard.invitations.noneDesc")}</p>
                     </div>
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -395,24 +388,24 @@ const Dashboard = () => {
                               : "bg-card text-muted-foreground border-border hover:border-primary/40"
                           }`}
                         >
-                          {s === "all" ? `All (${myJobs.length})` : s}
+                          {s === "all" ? `${t("common.filter.all")} (${myJobs.length})` : t(`common.status.${s}`, { defaultValue: s })}
                         </button>
                       ))}
                     </div>
                   )}
                   {loadingContracts ? (
-                    <p className="text-muted-foreground">Loading...</p>
+                    <p className="text-muted-foreground">{t("common.loading")}</p>
                   ) : myJobs.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
-                      <FileText className="mb-2 h-8 w-8 opacity-20" />
-                      <p>No jobs yet</p>
-                      <p className="text-xs mt-1 opacity-60">Jobs appear here when someone invites you to a contract</p>
+                    <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed">
+                      <Plus className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
+                      <p>{t("dashboard.jobs.none")}</p>
+                      <p className="text-xs mt-1 opacity-80 dark:opacity-60">{t("dashboard.jobs.noneDesc")}</p>
                     </div>
                   ) : (() => {
                     const filtered = jobFilter === "all" ? myJobs : myJobs.filter(c => c.status === jobFilter);
                     return filtered.length === 0 ? (
                       <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
-                        No {jobFilter} jobs
+                        {t("dashboard.jobs.noSpecific", { filter: jobFilter })}
                       </div>
                     ) : (
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -442,7 +435,7 @@ const Dashboard = () => {
         <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
         <MessageSquareText className="h-6 w-6 text-primary" />
         <span className="absolute left-16 bg-card border border-border px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all shadow-xl">
-          Help & Support
+          {t("nav.helpSupport")}
         </span>
       </Link>
 

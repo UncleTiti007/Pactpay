@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock, Calendar as CalendarIcon } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, Upload, X, User, Building2, ShieldCheck, Lock } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import PactpayLogo from "@/components/PactpayLogo";
 import { toYMD, fromYMD } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Argentina","Armenia","Australia","Austria",
@@ -42,6 +43,7 @@ const KYC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const [step, setStep] = useState(location.state?.startStep || 1);
   const [submitting, setSubmitting] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -74,7 +76,7 @@ const KYC = () => {
   const [backUpload, setBackUpload] = useState<FileUpload>({ file: null, preview: null });
   const [selfieUpload, setSelfieUpload] = useState<FileUpload>({ file: null, preview: null });
   
-  // Storage paths (to avoid re-uploading if not changed)
+  // Storage paths
   const [existingAvatarUrl, setExistingAvatarUrl] = useState<string | null>(null);
   const [existingFrontUrl, setExistingFrontUrl] = useState<string | null>(null);
   const [existingBackUrl, setExistingBackUrl] = useState<string | null>(null);
@@ -119,7 +121,6 @@ const KYC = () => {
         setExistingBackUrl(data.id_doc_back_url);
         setExistingSelfieUrl(data.id_selfie_url);
 
-        // Lock name if verified or documents exist
         if (data.kyc_verified || data.id_doc_front_url) {
           setIsNameLocked(true);
         }
@@ -141,7 +142,6 @@ const KYC = () => {
     return age >= 18;
   };
 
-  // Sync Bank Account Name with Profile Name for Individuals
   useEffect(() => {
     if (accountType === "individual" && fullName) {
       setBankAccountName(fullName);
@@ -157,16 +157,16 @@ const KYC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > maxMB * 1024 * 1024) {
-      toast.error(`File too large. Max ${maxMB}MB allowed.`);
+      toast.error(t("kyc.error.fileTooLarge", { max: maxMB }));
       return;
     }
     if (imagesOnly && !file.type.startsWith("image/")) {
-      toast.error("Only image files are allowed.");
+      toast.error(t("kyc.error.imagesOnly"));
       return;
     }
     const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
     if (!imagesOnly && !allowed.includes(file.type)) {
-      toast.error("Only images (JPEG, PNG, WebP) and PDFs are allowed.");
+      toast.error(t("kyc.error.invalidFormat"));
       return;
     }
     const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
@@ -179,7 +179,7 @@ const KYC = () => {
       contentType: file.type,
     });
     if (error) {
-      toast.error("Upload failed: " + error.message);
+      toast.error(t("kyc.error.uploadFailed") + ": " + error.message);
       return null;
     }
     return path;
@@ -215,26 +215,21 @@ const KYC = () => {
     try {
       const uid = user.id;
 
-      // Upload avatar to avatars bucket
       let avatarUrl: string | null = null;
       if (avatarUpload.file) {
         const ext = avatarUpload.file.name.split(".").pop();
         const path = `${uid}/avatar.${ext}`;
-        console.log("Attempting avatar upload to path:", path);
         const { error: avaError } = await supabase.storage
           .from("avatars")
           .upload(path, avatarUpload.file, { upsert: true, contentType: avatarUpload.file.type });
         
         if (!avaError) {
-          console.log("Avatar upload successful");
           avatarUrl = path;
         } else {
-          console.error("Avatar upload error:", avaError);
-          toast.error("Avatar upload failed: " + avaError.message);
+          toast.error(t("kyc.error.avatarUploadFailed") + ": " + avaError.message);
         }
       }
 
-      // Upload KYC docs to kyc-documents bucket
       const frontPath = frontUpload.file
         ? await uploadFile(frontUpload.file, `${uid}/id_front.${frontUpload.file.name.split(".").pop()}`)
         : existingFrontUrl;
@@ -246,7 +241,7 @@ const KYC = () => {
         : existingSelfieUrl;
 
       if (!frontPath || !selfiePath || (idType !== "passport" && !backPath)) {
-        toast.error("Some documents failed to upload. Please try again.");
+        toast.error(t("kyc.error.docsFailed"));
         setSubmitting(false);
         return;
       }
@@ -275,29 +270,28 @@ const KYC = () => {
       });
 
       if (profileError) {
-        toast.error("Failed to save profile: " + profileError.message);
+        toast.error(t("kyc.error.saveFailed") + ": " + profileError.message);
         setSubmitting(false);
         return;
       }
 
-      setStep(4); // success screen
+      setStep(4);
     } catch (err: any) {
-      toast.error(err.message || "An error occurred");
+      toast.error(err.message || t("common.unexpectedError"));
     }
     setSubmitting(false);
   };
 
   const steps = [
-    { icon: User, label: "Personal" },
-    { icon: Building2, label: "Account" },
-    { icon: ShieldCheck, label: "Identity" },
+    { icon: User, label: t("kyc.steps.personal") },
+    { icon: Building2, label: t("kyc.steps.account") },
+    { icon: ShieldCheck, label: t("kyc.steps.identity") },
   ];
 
   const FileUploadBox = ({
     label,
     upload,
     onClick,
-    accept,
     required,
   }: {
     label: string;
@@ -321,7 +315,7 @@ const KYC = () => {
         {upload.file ? (
           <span className="text-sm text-primary font-medium">{upload.file.name}</span>
         ) : (
-          <span className="text-sm text-muted-foreground">Click to upload</span>
+          <span className="text-sm text-muted-foreground">{t("kyc.clickToUpload")}</span>
         )}
         {upload.file && (
           <span className="text-xs text-muted-foreground">{(upload.file.size / 1024 / 1024).toFixed(2)} MB</span>
@@ -330,6 +324,14 @@ const KYC = () => {
     </div>
   );
 
+  if (loadingProfile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        {t("common.loading")}
+      </div>
+    );
+  }
+
   if (step === 4) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -337,12 +339,12 @@ const KYC = () => {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Check className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">KYC Submitted!</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("kyc.success.title")}</h1>
           <p className="text-muted-foreground">
-            Your KYC is under review. You can start using Pactpay while we verify your identity.
+            {t("kyc.success.desc")}
           </p>
           <Button variant="hero" className="w-full mt-2" onClick={() => navigate("/dashboard")}>
-            Go to Dashboard
+            {t("kyc.success.btn")}
           </Button>
         </div>
       </div>
@@ -357,8 +359,8 @@ const KYC = () => {
           <div className="flex justify-center mb-4">
             <PactpayLogo size="lg" />
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground">Identity Verification</h1>
-          <p className="text-xs text-muted-foreground mt-1">Complete your KYC to start using Pactpay</p>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">{t("kyc.title")}</h1>
+          <p className="text-xs text-muted-foreground mt-1">{t("kyc.subtitle")}</p>
         </div>
 
         {/* Progress bar */}
@@ -391,43 +393,43 @@ const KYC = () => {
         {/* Step 1 */}
         {step === 1 && (
           <div className="glass-card p-6 space-y-6">
-            <h2 className="text-lg font-semibold text-foreground">Personal Information</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t("kyc.personalInfo")}</h2>
 
             <div className="space-y-3">
               <Label className="flex items-center justify-between">
-                <span>Full Name <span className="text-destructive">*</span></span>
+                <span>{t("kyc.fullName")} <span className="text-destructive">*</span></span>
                 {isNameLocked && (
                   <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded flex items-center gap-1 uppercase font-bold tracking-wider">
-                    <Lock className="h-2.5 w-2.5" /> Locked
+                    <Lock className="h-2.5 w-2.5" /> {t("common.locked")}
                   </span>
                 )}
               </Label>
               <Input 
                 value={fullName} 
                 onChange={e => !isNameLocked && setFullName(e.target.value)} 
-                placeholder="Your legal full name" 
+                placeholder={t("kyc.placeholders.fullName")} 
                 readOnly={isNameLocked}
                 className={isNameLocked ? "bg-muted/50 opacity-80 cursor-not-allowed border-amber-500/20" : ""}
               />
-              {isNameLocked && <p className="text-[10px] text-muted-foreground mt-1">Legal name cannot be changed after verification starts.</p>}
+              {isNameLocked && <p className="text-[10px] text-muted-foreground mt-1">{t("kyc.nameLockedMsg")}</p>}
             </div>
 
             <div className="space-y-3">
-              <Label>Email <span className="text-destructive">*</span></Label>
+              <Label>{t("kyc.email")} <span className="text-destructive">*</span></Label>
               <Input value={user?.email || ""} readOnly className="opacity-60 cursor-not-allowed" />
             </div>
 
             <div className="space-y-3">
-              <Label>Phone Number <span className="text-destructive">*</span></Label>
-              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 234 567 8900" type="tel" />
+              <Label>{t("kyc.phone")} <span className="text-destructive">*</span></Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder={t("kyc.placeholders.phone")} type="tel" />
             </div>
 
             <div className="space-y-3">
-              <Label>Date of Birth <span className="text-destructive">*</span></Label>
+              <Label>{t("kyc.dob")} <span className="text-destructive">*</span></Label>
               <DatePicker
                   date={fromYMD(dob)}
                   setDate={(date) => setDob(toYMD(date))}
-                  placeholder="Select your birth date"
+                  placeholder={t("kyc.placeholders.dob")}
                   calendarProps={{
                     captionLayout: "dropdown",
                     fromYear: 1940,
@@ -435,23 +437,23 @@ const KYC = () => {
                   }}
                 />
               {dob && !isAdult(dob) && (
-                <p className="text-xs text-destructive mt-1">You must be at least 18 years old.</p>
+                <p className="text-xs text-destructive mt-1">{t("kyc.error.notAdult")}</p>
               )}
             </div>
 
             {/* Country searchable dropdown */}
             <div className="relative space-y-2">
-              <Label>Country of Residence <span className="text-destructive">*</span></Label>
+              <Label>{t("kyc.country")} <span className="text-destructive">*</span></Label>
               <Input
                 value={countrySearch || country}
                 onChange={e => { setCountrySearch(e.target.value); setShowCountryDropdown(true); }}
                 onFocus={() => setShowCountryDropdown(true)}
-                placeholder="Search country..."
+                placeholder={t("kyc.placeholders.country")}
               />
               {showCountryDropdown && (
                 <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
                   {filteredCountries.length === 0 && (
-                    <div className="p-3 text-sm text-muted-foreground">No results</div>
+                    <div className="p-3 text-sm text-muted-foreground">{t("common.noResults")}</div>
                   )}
                   {filteredCountries.map(c => (
                     <button
@@ -465,12 +467,12 @@ const KYC = () => {
                   ))}
                 </div>
               )}
-              {country && <p className="text-xs text-primary mt-1">Selected: {country}</p>}
+              {country && <p className="text-xs text-primary mt-1">{t("common.selected")}: {country}</p>}
             </div>
 
             {/* Avatar upload */}
             <div>
-              <Label className="mb-2 block">Profile Picture <span className="text-destructive">*</span></Label>
+              <Label className="mb-2 block">{t("kyc.profilePic")} <span className="text-destructive">*</span></Label>
               <input
                 ref={avatarRef}
                 type="file"
@@ -488,10 +490,10 @@ const KYC = () => {
 
             <div className="flex gap-3">
               <Button variant="ghost" className="flex-1" onClick={() => navigate("/profile")}>
-                <X className="mr-1 h-4 w-4" /> Cancel
+                <X className="mr-1 h-4 w-4" /> {t("common.cancel")}
               </Button>
               <Button variant="hero" className="flex-[2]" disabled={!canProceedStep1} onClick={() => setStep(2)}>
-                Next <ArrowRight className="ml-1 h-4 w-4" />
+                {t("common.next")} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -500,20 +502,20 @@ const KYC = () => {
         {/* Step 2 */}
         {step === 2 && (
           <div className="glass-card p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">Account Type</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t("kyc.accountTypeTitle")}</h2>
 
             <div className="grid grid-cols-2 gap-3">
-              {(["individual", "business"] as AccountType[]).map(t => (
+              {(["individual", "business"] as AccountType[]).map(t_type => (
                 <button
-                  key={t}
+                  key={t_type}
                   type="button"
-                  onClick={() => setAccountType(t)}
+                  onClick={() => setAccountType(t_type)}
                   className={`rounded-lg border-2 p-4 text-center transition-all ${
-                    accountType === t ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-border/80"
+                    accountType === t_type ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-border/80"
                   }`}
                 >
-                  {t === "individual" ? <User className="h-6 w-6 mx-auto mb-1" /> : <Building2 className="h-6 w-6 mx-auto mb-1" />}
-                  <span className="text-sm font-medium capitalize">{t}</span>
+                  {t_type === "individual" ? <User className="h-6 w-6 mx-auto mb-1" /> : <Building2 className="h-6 w-6 mx-auto mb-1" />}
+                  <span className="text-sm font-medium capitalize">{t(`kyc.${t_type}`)}</span>
                 </button>
               ))}
             </div>
@@ -521,28 +523,28 @@ const KYC = () => {
             {accountType === "business" && (
               <div className="space-y-4 rounded-lg border border-border bg-card/50 p-4">
                 <div className="space-y-3">
-                  <Label>Company Name <span className="text-destructive">*</span></Label>
+                  <Label>{t("kyc.businessName")} <span className="text-destructive">*</span></Label>
                   <Input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="ACME Inc." />
                 </div>
                 <div className="space-y-3">
-                  <Label>Company Registration Number <span className="text-destructive">*</span></Label>
+                  <Label>{t("kyc.regNumber")} <span className="text-destructive">*</span></Label>
                   <Input value={companyReg} onChange={e => setCompanyReg(e.target.value)} placeholder="RC123456" />
                 </div>
               </div>
             )}
 
             <div className="space-y-4 rounded-lg border border-border bg-card/30 p-4">
-              <p className="text-sm font-medium text-muted-foreground border-b border-border/50 pb-2 mb-2">Bank Details (Optional)</p>
+              <p className="text-sm font-medium text-muted-foreground border-b border-border/50 pb-2 mb-2">{t("kyc.bankDetails")}</p>
               <div className="space-y-3">
-                <Label>Bank Name</Label>
+                <Label>{t("kyc.bankName")}</Label>
                 <Input value={bankName} onChange={e => setBankName(e.target.value)} placeholder="e.g. Chase Bank" />
               </div>
               <div className="space-y-3">
                 <Label className="flex items-center justify-between">
-                  <span>Account Name <span className="text-destructive">*</span></span>
+                  <span>{t("kyc.accountName")} <span className="text-destructive">*</span></span>
                   {accountType === "individual" && (
                     <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded flex items-center gap-1 uppercase font-bold tracking-wider">
-                      <Lock className="h-2.5 w-2.5" /> Synced
+                      <Lock className="h-2.5 w-2.5" /> {t("common.synced")}
                     </span>
                   )}
                 </Label>
@@ -552,24 +554,24 @@ const KYC = () => {
                   value={bankAccountName} 
                   onChange={e => {
                     if (accountType === "business") {
-                      const val = e.target.value.replace(/[0-9]/g, ''); // Prevent numbers in name
+                      const val = e.target.value.replace(/[0-9]/g, '');
                       setBankAccountName(val);
                     }
                   }} 
-                  placeholder="Name on account" 
+                  placeholder={t("kyc.placeholders.accountName")} 
                   autoComplete="off-random-string"
                   readOnly={accountType === "individual"}
                   className={accountType === "individual" ? "bg-muted/50 opacity-80 cursor-not-allowed" : ""}
                 />
               </div>
               <div className="space-y-3">
-                <Label>Account Number</Label>
+                <Label>{t("kyc.accountNumber")}</Label>
                 <Input 
                   name="vld_acc_number"
                   id="vld_acc_number"
                   value={bankAccountNumber} 
                   onChange={e => {
-                    const val = e.target.value.replace(/[^0-9]/g, ''); // Numeric only
+                    const val = e.target.value.replace(/[^0-9]/g, '');
                     setBankAccountNumber(val);
                   }} 
                   placeholder="0123456789" 
@@ -580,9 +582,9 @@ const KYC = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="ghost" onClick={() => setStep(1)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
+              <Button variant="ghost" onClick={() => setStep(1)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> {t("common.back")}</Button>
               <Button variant="hero" className="flex-1 h-11 md:h-10 order-1 sm:order-2" disabled={!canProceedStep2} onClick={() => setStep(3)}>
-                Next <ArrowRight className="ml-1 h-4 w-4" />
+                {t("common.next")} <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -591,24 +593,24 @@ const KYC = () => {
         {/* Step 3 */}
         {step === 3 && (
           <div className="glass-card p-6 space-y-6">
-            <h2 className="text-lg font-semibold text-foreground">Identity Verification</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t("kyc.identityVerification")}</h2>
 
             <div className="space-y-3">
-              <Label>ID Type <span className="text-destructive">*</span></Label>
+              <Label>{t("kyc.idType")} <span className="text-destructive">*</span></Label>
               <select
                 value={idType}
                 onChange={e => setIdType(e.target.value as IDType)}
                 className="mt-1 w-full rounded-md border border-input bg-background/50 backdrop-blur-sm h-11 px-4 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm text-foreground"
               >
-                <option value="national_id">National ID</option>
-                <option value="passport">Passport</option>
-                <option value="drivers_license">Driver's License</option>
+                <option value="national_id">{t("kyc.nationalId")}</option>
+                <option value="passport">{t("kyc.passport")}</option>
+                <option value="drivers_license">{t("kyc.driversLicense")}</option>
               </select>
             </div>
 
             <div className="space-y-3">
-              <Label>ID Number <span className="text-destructive">*</span></Label>
-              <Input value={idNumber} onChange={e => setIdNumber(e.target.value)} placeholder="Enter ID number" />
+              <Label>{t("kyc.idNumber")} <span className="text-destructive">*</span></Label>
+              <Input value={idNumber} onChange={e => setIdNumber(e.target.value)} placeholder={t("kyc.placeholders.idNumber")} />
             </div>
 
             <input ref={frontRef} type="file" accept="image/*,application/pdf" className="hidden"
@@ -619,7 +621,7 @@ const KYC = () => {
               onChange={e => handleFileChange(e, setSelfieUpload, true)} />
 
             <FileUploadBox
-              label="ID Document — Front"
+              label={t("kyc.idFront")}
               upload={frontUpload}
               onClick={() => frontRef.current?.click()}
               accept="image/*,application/pdf"
@@ -628,7 +630,7 @@ const KYC = () => {
 
             {idType !== "passport" && (
               <FileUploadBox
-                label="ID Document — Back"
+                label={t("kyc.idBack")}
                 upload={backUpload}
                 onClick={() => backRef.current?.click()}
                 accept="image/*,application/pdf"
@@ -637,19 +639,19 @@ const KYC = () => {
             )}
 
             <FileUploadBox
-              label="Selfie Holding ID"
+              label={t("kyc.selfie")}
               upload={selfieUpload}
               onClick={() => selfieRef.current?.click()}
               accept="image/*"
               required
             />
 
-            <p className="text-xs text-muted-foreground">Max 5MB per file. Documents accept images (JPEG, PNG, WebP) and PDF.</p>
+            <p className="text-xs text-muted-foreground">{t("kyc.maxFileSizeNote")}</p>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="ghost" onClick={() => setStep(2)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
+              <Button variant="ghost" onClick={() => setStep(2)} className="h-11 md:h-10 order-2 sm:order-1"><ArrowLeft className="mr-1 h-4 w-4" /> {t("common.back")}</Button>
               <Button variant="hero" className="flex-1 h-11 md:h-10 order-1 sm:order-2" disabled={!canProceedStep3 || submitting} onClick={handleSubmit}>
-                {submitting ? "Submitting..." : "Submit KYC"}
+                {submitting ? t("common.submitting") : t("kyc.submitBtn")}
               </Button>
             </div>
           </div>

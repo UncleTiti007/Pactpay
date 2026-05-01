@@ -22,6 +22,7 @@ import Support from "./pages/Support";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Consent from "./pages/Consent";
+import { useTranslation } from "react-i18next";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
 const AppContent = () => {
   const { isAccessBlocked, signOut, loading } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   if (loading) return null;
 
@@ -62,9 +64,9 @@ const AppContent = () => {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 text-center">
         <div className="glass-card p-8 max-w-md border-red-500/30">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Account Restricted</h1>
+          <h1 className="text-2xl font-bold text-red-500 mb-4">{t("auth.restricted.title", { defaultValue: "Account Restricted" })}</h1>
           <p className="text-muted-foreground mb-6">
-            Your account has been deactivated or locked by an administrator. Please contact support if you believe this is an error.
+            {t("auth.restricted.message", { defaultValue: "Your account has been deactivated or locked by an administrator. Please contact support if you believe this is an error." })}
           </p>
           <button 
             onClick={async () => {
@@ -73,7 +75,7 @@ const AppContent = () => {
             }}
             className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
           >
-            Sign Out
+            {t("nav.signOut")}
           </button>
         </div>
       </div>

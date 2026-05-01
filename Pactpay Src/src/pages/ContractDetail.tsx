@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase, SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 import DashboardNavbar from "@/components/dashboard/DashboardNavbar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, MessageSquarePlus, RefreshCcw, XCircle, Send, Maximize2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, Pencil, Copy, Check, ShieldAlert, ArrowLeft, Link, FileText, Upload, ExternalLink, Download, Clock, MessageSquare, ChevronDown, ChevronUp, RefreshCcw, XCircle, Send, Maximize2 } from "lucide-react";
 import { UserSearch } from "@/components/contract/UserSearch";
 import { formatDate, cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const statusColors: Record<string, string> = {
   draft: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -36,6 +37,7 @@ const ContractDetail = () => {
   const { id } = useParams();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [contract, setContract] = useState<any>(null);
   const [activeInvite, setActiveInvite] = useState<any>(null);
@@ -56,26 +58,22 @@ const ContractDetail = () => {
   const [editingEmail, setEditingEmail] = useState(false);
   const [newInviteEmail, setNewInviteEmail] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
-  const [deletingContract, setDeletingContract] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [setIsDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [selectedFreelancer, setSelectedFreelancer] = useState<any>(null);
 
-  // Milestone Submission State
   const [submittingMilestoneId, setSubmittingMilestoneId] = useState<string | null>(null);
   const [submissionNote, setSubmissionNote] = useState("");
   const [submissionLink, setSubmissionLink] = useState("");
   const [submissionFile, setSubmissionFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Milestone History & Revision Note State
   const [milestoneHistory, setMilestoneHistory] = useState<Record<string, any[]>>({});
   const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({});
   const [requestingRevision, setRequestingRevision] = useState<any>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
-  const [submittingHistory, setSubmittingHistory] = useState(false);
+  const [setSubmittingHistory] = useState(false);
 
   const [disputeMessages, setDisputeMessages] = useState<any[]>([]);
   const [newDisputeMessage, setNewDisputeMessage] = useState("");
@@ -88,7 +86,7 @@ const ContractDetail = () => {
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
-  }, [user, authLoading]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
     if (id && user) fetchContract();
@@ -103,14 +101,13 @@ const ContractDetail = () => {
         .single();
 
       if (!c) {
-        toast.error("Contract not found");
+        toast.error(t("contract.detail.error.notFound"));
         navigate("/dashboard");
         return;
       }
 
       setContract(c);
 
-      // Fetch latest active invite
       const { data: invs } = await supabase
         .from("contract_invites")
         .select("*")
@@ -148,8 +145,6 @@ const ContractDetail = () => {
         });
         setDeliverablesByMilestone(grouped);
 
-        // Fetch milestone submission history — ONLY when milestones exist
-        // (empty .in([]) would cause a PostgREST crash)
         const { data: history } = await supabase
           .from("milestone_submissions")
           .select("*")
@@ -165,30 +160,28 @@ const ContractDetail = () => {
           setMilestoneHistory(groupedHistory);
         }
       } else {
-        // No milestones — clear stale history
         setMilestoneHistory({});
         setDeliverablesByMilestone({});
       }
 
       if (c.client_id) {
         const { data: cp } = await supabase.from("profiles").select("full_name").eq("id", c.client_id).single();
-        setClientName(cp?.full_name || "Unknown");
+        setClientName(cp?.full_name || t("common.unknown"));
       }
 
       if (c.freelancer_id) {
         const { data: fp } = await supabase.from("profiles").select("full_name").eq("id", c.freelancer_id).single();
-        setFreelancerName(fp?.full_name || "Unknown");
+        setFreelancerName(fp?.full_name || t("common.unknown"));
       }
 
       const { data: profile } = await supabase
         .from("profiles")
         .select("wallet_balance, kyc_verified")
-        .eq("id", user.id)
+        .eq("id", user!.id)
         .single();
       setWalletBalance(profile?.wallet_balance || 0);
       setKycVerified(profile?.kyc_verified ?? false);
 
-      // Fetch latest dispute regardless of status
       const { data: dData } = await supabase
         .from("disputes")
         .select("*")
@@ -205,7 +198,7 @@ const ContractDetail = () => {
       }
     } catch (err: any) {
       console.error("fetchContract error:", err);
-      toast.error("Failed to load contract. Please refresh the page.");
+      toast.error(t("contract.detail.error.fetchFailed"));
     } finally {
       setLoading(false);
     }
@@ -227,14 +220,13 @@ const ContractDetail = () => {
     const msg = newDisputeMessage;
     setNewDisputeMessage("");
 
-    // Optimistic Update: Add message locally first
     const optimisticMsg = {
       id: 'temp-' + Date.now(),
       dispute_id: dispute.id,
       user_id: user?.id,
       message: msg,
       created_at: new Date().toISOString(),
-      profiles: { full_name: user?.user_metadata?.full_name || user?.email || 'You' }
+      profiles: { full_name: user?.user_metadata?.full_name || user?.email || t("common.you") }
     };
     setDisputeMessages(prev => [...prev, optimisticMsg]);
 
@@ -245,36 +237,33 @@ const ContractDetail = () => {
     });
 
     if (error) {
-      toast.error("Failed to send message: " + error.message);
+      toast.error(t("contract.detail.error.sendMessage") + ": " + error.message);
       setDisputeMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
     } else {
       fetchDisputeMessages(dispute.id);
 
-      // --- Notify Other Parties ---
-      const myName = user?.user_metadata?.full_name || user?.email || "The other party";
+      const myName = user?.user_metadata?.full_name || user?.email || t("common.otherParty");
       
-      // 1. Notify the "Other" User (Client or Freelancer)
       const otherPartyId = user?.id === contract?.client_id ? contract?.freelancer_id : contract?.client_id;
       if (otherPartyId) {
         await supabase.from("notifications").insert({
           user_id: otherPartyId,
           type: "dispute",
-          title: "New Dispute Message",
-          message: `${myName} posted a message in your dispute.`,
+          title: t("contract.notif.disputeMessageTitle"),
+          message: t("contract.notif.disputeMessageMsg", { name: myName }),
           link: `/contracts/${contract?.id}`
         });
       }
 
-      // 2. Notify Admins
       const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true);
       if (admins && admins.length > 0) {
         const adminNotifications = admins
-          .filter(a => a.id !== user?.id) // Don't notify self if I'm an admin
+          .filter(a => a.id !== user?.id)
           .map(admin => ({
             user_id: admin.id,
             type: "dispute",
-            title: "Dispute Activity",
-            message: `User ${myName} sent a message in Dispute #${dispute.id.substring(0,8)}`,
+            title: t("contract.notif.adminDisputeTitle"),
+            message: t("contract.notif.adminDisputeMsg", { name: myName, id: dispute.id.substring(0,8) }),
             link: "/admin"
           }));
         
@@ -285,7 +274,6 @@ const ContractDetail = () => {
     }
   };
 
-  // Realtime listener for dispute messages
   useEffect(() => {
     if (dispute?.id) {
       const channel = supabase
@@ -295,7 +283,7 @@ const ContractDetail = () => {
           schema: 'public',
           table: 'dispute_messages',
           filter: `dispute_id=eq.${dispute.id}`
-        }, (payload) => {
+        }, () => {
           fetchDisputeMessages(dispute.id);
         })
         .subscribe();
@@ -308,40 +296,39 @@ const ContractDetail = () => {
   const isFreelancer = user?.id === contract?.freelancer_id;
   const isInvited = user?.email?.toLowerCase() === (activeInvite?.invited_email || contract?.invite_email)?.toLowerCase();
   
-  // A contract is funded when it is active or completed
   const isFunded = contract?.status === 'active' || contract?.status === 'completed' || contract?.status === 'disputed';
   const totalRequired = contract?.total_amount || 0;
 
   const handleFundContract = async () => {
     if (!kycVerified) {
-      toast.error("KYC verification required before funding contracts.");
+      toast.error(t("contract.detail.error.kycRequired"));
       return;
     }
     if (!user || !contract) return;
     setFunding(true);
     try {
       const totalAmount = contract.total_amount;
-      const platformFee = totalAmount * 0.02; // 2% fee included
+      const platformFee = totalAmount * 0.02;
       const netAmount = totalAmount - platformFee;
 
       const { data: profile } = await supabase.from("profiles").select("wallet_balance").eq("id", user.id).single();
       const currentBalance = profile?.wallet_balance || 0;
       if (currentBalance < totalAmount) {
-        toast.error(`Insufficient balance. You need $${totalAmount.toFixed(2)} but have $${currentBalance.toFixed(2)}.`);
+        toast.error(t("contract.detail.error.insufficientBalance", { required: totalAmount.toFixed(2), current: currentBalance.toFixed(2) }));
         setFunding(false);
         return;
       }
 
       const newBalance = currentBalance - totalAmount;
       const { error: updateErr } = await supabase.from("profiles").update({ wallet_balance: newBalance }).eq("id", user.id);
-      if (updateErr) throw new Error("Failed to deduct wallet balance");
+      if (updateErr) throw new Error(t("contract.detail.error.balanceDeduction"));
 
       const { error: cErr } = await supabase.from("contracts").update({ 
         status: "active", 
         platform_fee: platformFee,
         funded_at: new Date().toISOString()
       }).eq("id", id);
-      if (cErr) throw new Error("Failed to activate contract");
+      if (cErr) throw new Error(t("contract.detail.error.activateFailed"));
 
       await supabase.from("transactions").insert([
         { type: "escrow", amount: netAmount, from_user_id: user.id, metadata: { contract_id: id } },
@@ -352,20 +339,19 @@ const ContractDetail = () => {
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "deposit",
-          title: "Contract Funded",
-          message: `Client has fully funded the contract: ${contract.title}. Work can now begin!`,
+          title: t("contract.notif.fundedTitle"),
+          message: t("contract.notif.fundedMsg", { title: contract.title }),
           link: `/contracts/${id}`
         });
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
       await supabase.functions.invoke("send-email", {
         body: { type: "deposit", contract_id: id }
       });
-      toast.success("Contract funded and now active!");
+      toast.success(t("contract.detail.success.funded"));
       fetchContract();
     } catch (err: any) {
-      toast.error("Failed to fund contract: " + err.message);
+      toast.error(t("contract.detail.error.fundFailed") + ": " + err.message);
     } finally {
       setFunding(false);
     }
@@ -376,11 +362,9 @@ const ContractDetail = () => {
     setFunding(true);
     try {
       const ms = releasingMilestone;
-      if (ms.status === "completed") throw new Error("Milestone already released");
-      if (ms.status === "disputed") throw new Error("This milestone is under dispute and can only be resolved by a Pactpay Admin.");
+      if (ms.status === "completed") throw new Error(t("contract.detail.error.alreadyReleased"));
+      if (ms.status === "disputed") throw new Error(t("contract.detail.error.disputeActive"));
 
-      // We only update the status. The database trigger (tr_milestone_release) 
-      // handles the wallet transfer and transaction recording automatically.
       const { error: msErr } = await supabase
         .from("milestones")
         .update({ status: "completed" })
@@ -388,33 +372,30 @@ const ContractDetail = () => {
         
       if (msErr) throw msErr;
 
-      // Notify the freelancer
       if (contract.freelancer_id) {
         await supabase.from("notifications").insert({
           user_id: contract.freelancer_id,
           type: "milestone_approved",
-          title: "Milestone Released",
-          message: `Milestone "${ms.title || ms.name}" approved! $${ms.amount.toLocaleString()} has been released to your wallet.`,
+          title: t("contract.notif.milestoneReleasedTitle"),
+          message: t("contract.notif.milestoneReleasedMsg", { title: ms.title || ms.name, amount: ms.amount.toLocaleString() }),
           link: `/contracts/${contract.id}`
         });
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
       await supabase.functions.invoke("send-email", {
         body: { type: "milestone_released", contract_id: id, milestone_id: ms.id }
       });
 
-      toast.success("Milestone approved and funds released!");
+      toast.success(t("contract.detail.success.released"));
       setReleasingMilestone(null);
       fetchContract();
     } catch (err: any) {
       console.error("Release error:", err);
-      toast.error("Failed to release funds: " + (err.message || "Unknown error"));
+      toast.error(t("contract.detail.error.releaseFailed") + ": " + (err.message || t("common.unknownError")));
     } finally {
       setFunding(false);
     }
   };
-
 
   const uploadSubmissionFile = async (file: File): Promise<string | null> => {
     const fileExt = file.name.split('.').pop();
@@ -426,7 +407,7 @@ const ContractDetail = () => {
       .upload(filePath, file);
 
     if (uploadError) {
-      toast.error("File upload failed: " + uploadError.message);
+      toast.error(t("contract.detail.error.uploadSubmission") + ": " + uploadError.message);
       return null;
     }
 
@@ -462,33 +443,31 @@ const ContractDetail = () => {
 
       if (error) throw error;
 
-      // Also record in history table
       await supabase.from("milestone_submissions").insert({
         milestone_id: milestoneId,
-        created_by: user.id,
+        created_by: user!.id,
         type: "submission",
         note: submissionNote,
         attachment_url: finalUrl
       });
 
-      // Notify the client
       const m = milestones.find(ms => ms.id === milestoneId);
       await supabase.from("notifications").insert({
         user_id: contract.client_id,
         type: "update",
-        title: "Milestone Submitted",
-        message: `${user?.user_metadata?.full_name || 'Freelancer'} has submitted "${m?.title || m?.name}" for review.`,
+        title: t("contract.notif.milestoneSubmittedTitle"),
+        message: t("contract.notif.milestoneSubmittedMsg", { name: user?.user_metadata?.full_name || t("common.freelancer"), title: m?.title || m?.name }),
         link: `/contracts/${contract.id}`
       });
 
-      toast.success("Milestone submitted for review!");
+      toast.success(t("contract.detail.success.submitted"));
       setSubmittingMilestoneId(null);
       setSubmissionNote("");
       setSubmissionLink("");
       setSubmissionFile(null);
       fetchContract();
     } catch (error: any) {
-      toast.error("Failed to submit milestone: " + error.message);
+      toast.error(t("contract.detail.error.submitMilestone") + ": " + error.message);
     } finally {
       setIsUploading(false);
     }
@@ -496,13 +475,11 @@ const ContractDetail = () => {
 
   const executeRequestRevision = async () => {
     if (!requestingRevision || !revisionFeedback.trim()) {
-      toast.error("Please provide feedback for the revision");
+      toast.error(t("contract.detail.error.revisionFeedback"));
       return;
     }
 
-    setSubmittingHistory(true);
     try {
-      // 1. Update milestone status
       const { error: mError } = await supabase
         .from("milestones")
         .update({ status: "revision" })
@@ -510,48 +487,27 @@ const ContractDetail = () => {
 
       if (mError) throw mError;
 
-      // 2. Record revision request in history
       await supabase.from("milestone_submissions").insert({
         milestone_id: requestingRevision.id,
-        created_by: user.id,
+        created_by: user!.id,
         type: "revision_request",
         note: revisionFeedback
       });
 
-      // 3. Notify the freelancer
       await supabase.from("notifications").insert({
         user_id: contract.freelancer_id,
         type: "update",
-        title: "Revision Requested",
-        message: `The client has requested a revision for: "${requestingRevision.title || requestingRevision.name}". Feedback: ${revisionFeedback.substring(0, 50)}...`,
+        title: t("contract.notif.revisionRequestedTitle"),
+        message: t("contract.notif.revisionRequestedMsg", { title: requestingRevision.title || requestingRevision.name, feedback: revisionFeedback.substring(0, 50) }),
         link: `/contracts/${contract.id}`
       });
 
-      toast.success("Revision request sent with feedback!");
+      toast.success(t("contract.detail.success.revisionRequested"));
       setRequestingRevision(null);
       setRevisionFeedback("");
       fetchContract();
     } catch (err: any) {
-      toast.error("Failed to request revision: " + err.message);
-    } finally {
-      setSubmittingHistory(false);
-    }
-  };
-
-  const markReady = async (milestoneId: string) => {
-    const { error } = await supabase
-      .from("milestones")
-      .update({ status: "in_review" })
-      .eq("id", milestoneId);
-    if (error) {
-      toast.error("Failed to update milestone");
-    } else {
-      const { data: { session } } = await supabase.auth.getSession();
-      await supabase.functions.invoke("send-email", {
-        body: { type: "milestone_submitted", contract_id: id, milestone_id: milestoneId }
-      });
-      toast.success("Marked as ready for review! Client notified.");
-      fetchContract();
+      toast.error(t("contract.detail.error.requestRevision") + ": " + err.message);
     }
   };
 
@@ -569,15 +525,13 @@ const ContractDetail = () => {
 
   const handleAcceptInvite = async () => {
     if (!user || !contract) return;
-    
     if (!kycVerified) {
-      toast.error("You must complete KYC verification before accepting contracts.");
+      toast.error(t("contract.detail.error.kycAccept"));
       return;
     }
 
     setAccepting(true);
     try {
-      // 1. Update contract status and assign freelancer
       const { error: cError } = await supabase
         .from("contracts")
         .update({ freelancer_id: user.id, status: "pending" })
@@ -585,14 +539,12 @@ const ContractDetail = () => {
 
       if (cError) throw cError;
 
-      // 2. Mark the invite as accepted if we have one
       if (activeInvite) {
         await supabase
           .from("contract_invites")
           .update({ accepted: true })
           .eq("id", activeInvite.id);
       } else {
-        // Find and mark by email if activeInvite wasn't found in handleInitialLoad
         await supabase
           .from("contract_invites")
           .update({ accepted: true })
@@ -601,19 +553,18 @@ const ContractDetail = () => {
           .eq("accepted", false);
       }
 
-      // 3. Notify the client
       await supabase.from("notifications").insert({
         user_id: contract.client_id,
         type: "update",
-        title: "Contract Accepted!",
-        message: `${user?.user_metadata?.full_name || user.email} has accepted your contract: "${contract.title}". You can now fund the contract to start work.`,
+        title: t("contract.notif.acceptTitle"),
+        message: t("contract.notif.acceptMsg", { name: user?.user_metadata?.full_name || user.email, title: contract.title }),
         link: `/contracts/${contract.id}`
       });
 
-      toast.success("Contract accepted! The client can now fund the contract to activate it.");
+      toast.success(t("contract.detail.success.accepted"));
       fetchContract();
     } catch (err: any) {
-      toast.error("Failed to accept contract: " + err.message);
+      toast.error(t("contract.detail.error.acceptFailed") + ": " + err.message);
     } finally {
       setAccepting(false);
     }
@@ -624,7 +575,6 @@ const ContractDetail = () => {
     
     setAccepting(true);
     try {
-      // 1. Update contract status
       const { error: cError } = await supabase
         .from("contracts")
         .update({ status: "cancelled", freelancer_id: null })
@@ -632,38 +582,36 @@ const ContractDetail = () => {
 
       if (cError) throw cError;
 
-      // 2. Notify the client
       await supabase.from("notifications").insert({
         user_id: contract.client_id,
         type: "update",
-        title: "Contract Invite Declined",
-        message: `${user?.user_metadata?.full_name || user.email} has declined your invitation for "${contract.title}".`,
+        title: t("contract.notif.declineTitle"),
+        message: t("contract.notif.declineMsg", { name: user?.user_metadata?.full_name || user.email, title: contract.title }),
         link: `/contracts/${contract.id}`
       });
 
-      toast.info("Contract invitation declined.");
+      toast.info(t("contract.detail.info.declined"));
       navigate("/dashboard");
     } catch (err: any) {
-      toast.error("Failed to decline contract: " + err.message);
+      toast.error(t("contract.detail.error.declineFailed") + ": " + err.message);
     } finally {
       setAccepting(false);
     }
   };
 
-
   const handleSubmitDispute = async () => {
     if (!disputingMilestone || !disputeReason.trim()) {
-      toast.error("Please provide a reason for the dispute");
+      toast.error(t("contract.detail.error.disputeReason"));
       return;
     }
     setSubmittingDispute(true);
 
-    const { data: dispute, error } = await supabase
+    const { data: dispute_res, error } = await supabase
       .from("disputes")
       .insert({
         contract_id: id,
         milestone_id: disputingMilestone.id,
-        raised_by: user.id,
+        raised_by: user!.id,
         reason: disputeReason,
         status: "open",
       })
@@ -671,33 +619,30 @@ const ContractDetail = () => {
       .single();
 
     if (error) {
-      toast.error("Failed to raise dispute: " + error.message);
+      toast.error(t("contract.detail.error.disputeRaise") + ": " + error.message);
       setSubmittingDispute(false);
       return;
     }
 
     await supabase.from("contracts").update({ status: "disputed" }).eq("id", id);
-    // Mark the specific milestone as disputed
     await supabase.from("milestones").update({ status: "disputed" }).eq("id", disputingMilestone.id);
 
-    // Notify both parties about the dispute
     const parties = [contract.client_id, contract.freelancer_id];
-    const milestoneTitle = disputingMilestone.title || disputingMilestone.name || "Milestone";
+    const milestoneTitle = disputingMilestone.title || disputingMilestone.name || t("common.milestone");
     const notifications = parties.map(pid => ({
       user_id: pid,
       type: "dispute",
-      title: "Dispute Raised",
-      message: `${user?.user_metadata?.full_name || 'A party'} has raised a dispute on "${milestoneTitle}". Funds for this milestone are now frozen.`,
+      title: t("contract.notif.disputeRaisedTitle"),
+      message: t("contract.notif.disputeRaisedMsg", { name: user?.user_metadata?.full_name || t("common.aParty"), title: milestoneTitle }),
       link: `/contracts/${id}`
     }));
     await supabase.from("notifications").insert(notifications);
 
-    // Non-blocking email attempt
     supabase.functions.invoke("send-email", {
-      body: { type: "dispute", contract_id: id, dispute_id: dispute.id }
+      body: { type: "dispute", contract_id: id, dispute_id: dispute_res.id }
     }).catch(() => {});
 
-    toast.success("Dispute raised. Funds are frozen pending review.");
+    toast.success(t("contract.detail.success.disputeRaised"));
     setDisputingMilestone(null);
     setDisputeReason("");
     fetchContract();
@@ -705,13 +650,9 @@ const ContractDetail = () => {
   };
 
   const handleSaveEmail = async () => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     setSavingEmail(true);
-    
     try {
-      // If a registered freelancer was selected via search
       if (selectedFreelancer) {
-        // 1. Update the contract directly
         const { error: cError } = await supabase
           .from("contracts")
           .update({ 
@@ -722,7 +663,6 @@ const ContractDetail = () => {
           
         if (cError) throw cError;
 
-        // 2. Insert into invites table (for tracking/fallback)
         const { data: invite } = await supabase
           .from("contract_invites")
           .insert({ 
@@ -731,25 +671,22 @@ const ContractDetail = () => {
           })
           .select().single();
 
-        // 3. Notify the freelancer internally
         await supabase.from("notifications").insert({
           user_id: selectedFreelancer.id,
           type: "invite",
-          title: "New Contract Invite",
-          message: `You have been invited to a new contract: ${contract.title}`,
+          title: t("contract.notif.newInviteTitle"),
+          message: t("contract.notif.newInviteMsg", { title: contract.title }),
           link: `/contracts/${id}`
         });
 
-        // 4. Trigger email as backup
         await supabase.functions.invoke("send-email", {
           body: { type: "invite", contract_id: id, invite_id: invite?.id }
         });
 
-        toast.success(`Contract assigned to ${selectedFreelancer.full_name} and notification sent!`);
+        toast.success(t("contract.detail.success.assigned", { name: selectedFreelancer.full_name }));
       } else {
-        // Fallback: Traditional email invite for new users
         if (!newInviteEmail) {
-           toast.error("Please search for a user or enter an email address");
+           toast.error(t("contract.detail.error.searchOrEmail"));
            setSavingEmail(false);
            return;
         }
@@ -765,20 +702,19 @@ const ContractDetail = () => {
           body: { type: "invite", contract_id: id, invite_id: invite.id }
         });
         
-        // Also update the contract's invite_email field for consistency
         await supabase.from("contracts").update({ 
           invite_email: newInviteEmail.toLowerCase(),
           freelancer_id: null 
         }).eq("id", id);
 
-        toast.success("Invite email sent successfully!");
+        toast.success(t("contract.detail.success.inviteSent"));
       }
 
       setEditingEmail(false);
       setSelectedFreelancer(null);
       fetchContract();
     } catch (err: any) {
-      toast.error("Failed to update freelancer: " + err.message);
+      toast.error(t("contract.detail.error.updateFreelancer") + ": " + err.message);
     } finally {
       setSavingEmail(false);
     }
@@ -787,34 +723,33 @@ const ContractDetail = () => {
   const handleCopyInviteLink = () => {
     const link = `${window.location.origin}/invite/${activeInvite?.token || contract?.invite_token}`;
     navigator.clipboard.writeText(link);
-    setCopiedLink(true);
-    toast.success("Invite link copied!");
-    setTimeout(() => setCopiedLink(false), 2000);
+    toast.success(t("contract.detail.success.copied"));
   };
 
   const handleDeleteContract = async () => {
     if (!contract || !user) return;
     if (contract.client_id !== user.id) {
-      toast.error("You are not authorized to delete this contract.");
+      toast.error(t("contract.detail.error.notAuthorizedDelete"));
       return;
     }
+
     if (contract.status !== "pending" && contract.status !== "draft") {
-      toast.error("Only pending or draft contracts can be deleted.");
+      toast.error(t("contract.detail.error.deleteRestricted"));
       return;
     }
 
     setIsDeleting(true);
     try {
       const { error: msError } = await supabase.from("milestones").delete().eq("contract_id", id);
-      if (msError) throw new Error("Could not delete associated milestones.");
+      if (msError) throw new Error(t("contract.detail.error.deleteMilestones"));
 
       const { error: cError } = await supabase.from("contracts").delete().eq("id", id);
-      if (cError) throw new Error("Could not delete contract. Verify permissions.");
+      if (cError) throw new Error(t("contract.detail.error.deleteContract"));
 
-      toast.success("Contract deleted successfully");
-      window.location.href = "/dashboard";
+      toast.success(t("contract.detail.success.deleted"));
+      navigate("/dashboard");
     } catch (err: any) {
-      toast.error("Failed to delete contract: " + err.message);
+      toast.error(t("contract.detail.error.deleteFailed") + ": " + err.message);
       setIsDeleting(false);
     }
   };
@@ -822,7 +757,7 @@ const ContractDetail = () => {
   if (loading || authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        Loading...
+        {t("common.loading")}
       </div>
     );
   }
@@ -833,9 +768,8 @@ const ContractDetail = () => {
     .filter((m) => m.status === "completed" || m.status === "released")
     .reduce((s: number, m: any) => s + (m.amount || 0), 0);
   
-  // Escrow = net amount (after platform fee) minus what has already been released
-  const platformFee = contract.platform_fee || (contract.total_amount * 0.02);
-  const netEscrow = contract.total_amount - platformFee;
+  const platformFeeVal = contract.platform_fee || (contract.total_amount * 0.02);
+  const netEscrow = contract.total_amount - platformFeeVal;
   const escrowAmount = isFunded ? (netEscrow - releasedAmount) : 0;
 
   return (
@@ -846,45 +780,39 @@ const ContractDetail = () => {
         {!kycVerified && (
           <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400 flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 shrink-0" />
-            Your KYC verification is pending. Funding or accepting contracts is restricted until your identity is verified.
-            <a href="/profile" className="underline ml-1">Check status</a>
+            {t("contract.detail.kycPendingMsg")}
+            <button onClick={() => navigate("/profile")} className="underline ml-1">{t("contract.detail.checkStatus")}</button>
           </div>
         )}
 
-        {/* Invitation Banner — shown to invited freelancer when status is pending */}
         {contract.status === "pending" && isInvited && activeInvite && (
           <div className="mb-8 rounded-xl border border-primary/30 bg-primary/5 p-6 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-primary font-bold">
                   <CheckCircle className="h-5 w-5" />
-                  <h2 className="text-xl">Contract Invitation</h2>
+                  <h2 className="text-xl">{t("contract.detail.inviteTitle")}</h2>
                 </div>
                 <p className="text-muted-foreground">
-                  {clientName} has invited you to work on <span className="font-medium text-foreground">"{contract.title}"</span>. 
-                  Review the details below and accept to proceed.
+                  {t("contract.detail.inviteMsg", { client: clientName, title: contract.title })}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="hero" size="lg" onClick={handleAcceptInvite} disabled={accepting || !kycVerified}>
-                  {accepting ? "Accept & Start Workspace" : "Accept & Start Workspace"}
+                  {accepting ? t("common.processing") : t("contract.detail.acceptBtn")}
                 </Button>
                 <Button variant="ghost" size="lg" onClick={handleDeclineInvite} disabled={accepting} className="text-muted-foreground">
-                  Decline
+                  {t("common.decline")}
                 </Button>
               </div>
             </div>
             {!kycVerified && (
               <p className="mt-3 text-xs text-amber-400">
-                You must complete identity verification in your profile before you can accept this contract.
+                {t("contract.detail.kycRequiredToAccept")}
               </p>
             )}
-
-
           </div>
         )}
-
-
 
         <div className="mb-8">
           <Button 
@@ -892,34 +820,34 @@ const ContractDetail = () => {
             onClick={() => navigate("/dashboard")} 
             className="mb-4 -ml-2 h-8 text-muted-foreground hover:text-foreground hover:bg-transparent"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t("common.backToDashboard")}
           </Button>
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-foreground">{contract.title}</h1>
               <Badge variant="outline" className={statusColors[contract.status] || statusColors.draft}>
-                {contract.status}
+                {t(`common.status.${contract.status}`, { defaultValue: contract.status })}
               </Badge>
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Client: {clientName} · Assigned User:{" "}
+            {t("contract.detail.client")}: {clientName} · {t("contract.detail.assignedUser")}:{" "}
             {contract.freelancer_id ? (
               freelancerName
             ) : (
-              <span className="text-amber-400 italic">Awaiting acceptance</span>
+              <span className="text-amber-400 italic">{t("dashboard.awaitingAcceptance")}</span>
             )}
           </p>
 
           {isClient && contract.status === "pending" && !contract.freelancer_id && (
             <div className="mt-3 space-y-3 max-w-md">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">User Assignment</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("contract.detail.userAssignment")}</span>
               {editingEmail ? (
                 <div className="space-y-3">
                   <UserSearch 
-                    onSelect={(user) => {
-                      setSelectedFreelancer(user);
-                      if (user) setNewInviteEmail(user.email);
+                    onSelect={(selected_u) => {
+                      setSelectedFreelancer(selected_u);
+                      if (selected_u) setNewInviteEmail(selected_u.email);
                     }}
                     onEmailChange={(email) => {
                       setNewInviteEmail(email);
@@ -929,38 +857,38 @@ const ContractDetail = () => {
                   />
                   <div className="flex gap-2">
                     <Button size="sm" variant="hero" className="flex-1" onClick={handleSaveEmail} disabled={savingEmail}>
-                      {savingEmail ? "Assigning..." : "Assign & Notify"}
+                      {savingEmail ? t("common.processing") : t("contract.detail.assignBtn")}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => { setEditingEmail(false); setNewInviteEmail(contract.invite_email || ""); setSelectedFreelancer(null); }}>
-                      Cancel
+                      {t("common.cancel")}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 bg-card/50 border border-border rounded-lg px-3 py-2">
                   <div className="flex-1 overflow-hidden">
-                    <p className="text-xs text-muted-foreground">Invite sent to:</p>
+                    <p className="text-xs text-muted-foreground">{t("contract.detail.inviteSentTo")}:</p>
                     <p className="text-sm font-medium truncate text-foreground">{activeInvite?.invited_email || contract.invite_email}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => setEditingEmail(true)} className="p-2 text-muted-foreground hover:text-foreground transition-colors" title="Change Freelancer">
+                    <button onClick={() => setEditingEmail(true)} className="p-2 text-muted-foreground hover:text-foreground transition-colors" title={t("contract.detail.changeFreelancer")}>
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button 
                       onClick={async () => {
-                        const toastId = toast.loading("Resending invite...");
+                        const toastId = toast.loading(t("contract.detail.resendingInvite"));
                         try {
                           const { error } = await supabase.functions.invoke("send-email", {
                             body: { type: "invite", contract_id: id, invite_id: activeInvite?.id }
                           });
                           if (error) throw error;
-                          toast.success("Invite email resent successfully!", { id: toastId });
+                          toast.success(t("contract.detail.success.inviteResent"), { id: toastId });
                         } catch (err: any) {
-                          toast.error("Failed to resend: " + (err.message || "Unknown error"), { id: toastId });
+                          toast.error(t("common.error") + ": " + (err.message || t("common.unknownError")), { id: toastId });
                         }
                       }} 
                       className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
-                      title="Resend Invitation"
+                      title={t("contract.detail.resendInvite")}
                     >
                       <Copy className="h-4 w-4" />
                     </button>
@@ -975,7 +903,7 @@ const ContractDetail = () => {
           <div className="lg:col-span-2 space-y-6">
             {contract.description && (
               <div className="glass-card p-5">
-                <h3 className="mb-2 text-sm font-medium text-muted-foreground">Scope of Work</h3>
+                <h3 className="mb-2 text-sm font-medium text-muted-foreground">{t("createContract.labelScope")}</h3>
                 <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{contract.description}</p>
               </div>
             )}
@@ -988,11 +916,11 @@ const ContractDetail = () => {
                       <ShieldAlert className="h-5 w-5 text-destructive" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-foreground">Dispute Resolution Center</h3>
-                      <p className="text-xs text-muted-foreground">Admin is reviewing this contract. Communicate below.</p>
+                      <h3 className="font-bold text-foreground">{t("contract.detail.disputeCenterTitle")}</h3>
+                      <p className="text-xs text-muted-foreground">{t("contract.detail.disputeCenterDesc")}</p>
                     </div>
                   </div>
-                  <Badge variant="destructive" className="animate-pulse">Active Dispute</Badge>
+                  <Badge variant="destructive" className="animate-pulse">{t("contract.detail.activeDispute")}</Badge>
                 </div>
 
                 <div className="glass-card flex flex-col h-[600px] border-amber-500/20 bg-amber-500/5 relative overflow-hidden">
@@ -1008,31 +936,29 @@ const ContractDetail = () => {
                             <div>
                               <DialogTitle className="text-xl font-bold flex items-center gap-2">
                                 <MessageSquare className="h-5 w-5 text-amber-500" />
-                                Dispute Resolution Center
+                                {t("contract.detail.disputeCenterTitle")}
                               </DialogTitle>
                               <DialogDescription className="text-xs text-muted-foreground mt-1">
-                                Immersive mediation mode for Dispute #{dispute.id.substring(0,8)}
+                                {t("contract.detail.disputeImmersiveMsg", { id: dispute.id.substring(0,8) })}
                               </DialogDescription>
                             </div>
                           </div>
                           
                           <div className="flex-1 flex overflow-hidden">
-                            {/* Sidebar with Context */}
                             <div className="w-64 border-r border-border p-6 bg-muted/20 hidden md:block">
-                              <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">Dispute Context</h4>
+                              <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">{t("contract.detail.disputeContext")}</h4>
                               <div className="space-y-4">
                                 <div>
-                                  <p className="text-[10px] text-muted-foreground uppercase">Contract</p>
+                                  <p className="text-[10px] text-muted-foreground uppercase">{t("common.contract")}</p>
                                   <p className="text-sm font-semibold">{contract.title}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] text-muted-foreground uppercase">Reason</p>
+                                  <p className="text-[10px] text-muted-foreground uppercase">{t("common.reason")}</p>
                                   <p className="text-xs italic mt-1 text-muted-foreground/80">"{dispute.reason}"</p>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Chat Area */}
                             <div className="flex-1 flex flex-col h-full bg-background/50">
                               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                  {disputeMessages.map((msg) => {
@@ -1042,7 +968,7 @@ const ContractDetail = () => {
                                      <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-left-2")}>
                                        <div className="flex items-center gap-2 mb-1.5 px-1">
                                          <span className={cn("text-xs font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
-                                           {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                           {isAdminReply ? t("common.admin") : (msg.profiles?.full_name || t("common.user"))}
                                          </span>
                                          <span className="text-[10px] text-muted-foreground/40 font-medium">
                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1063,7 +989,7 @@ const ContractDetail = () => {
                               </div>
                               <form onSubmit={handleSendDisputeMessage} className="p-4 bg-card border-t border-border flex gap-3">
                                  <Input 
-                                   placeholder="Type a message to the mediation team..." 
+                                   placeholder={t("contract.detail.disputePlaceholder")} 
                                    className="flex-1 h-11 bg-background/50 border-border focus:border-primary/50 transition-all shadow-inner"
                                    value={newDisputeMessage}
                                    onChange={(e) => setNewDisputeMessage(e.target.value)}
@@ -1080,21 +1006,21 @@ const ContractDetail = () => {
 
                   <div className="p-3 bg-muted/30 border-b border-border flex justify-between items-center pr-16">
                      <div>
-                       <p className="text-[10px] text-muted-foreground font-bold uppercase">Disputed Milestone</p>
+                       <p className="text-[10px] text-muted-foreground font-bold uppercase">{t("contract.detail.disputedMilestone")}</p>
                        <p className="text-sm font-semibold mt-0.5">
-                         {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "N/A"}
+                         {milestones.find(m_item => m_item.id === dispute.milestone_id)?.title || milestones.find(m_item => m_item.id === dispute.milestone_id)?.name || "N/A"}
                        </p>
                      </div>
                      <div className="text-right">
-                       <p className="text-[10px] text-muted-foreground font-bold uppercase">Locked Amount</p>
+                       <p className="text-[10px] text-muted-foreground font-bold uppercase">{t("contract.detail.lockedAmount")}</p>
                        <p className="text-sm font-bold text-amber-500 mt-0.5">
-                         ${milestones.find(m => m.id === dispute.milestone_id)?.amount?.toLocaleString()}
+                         ${milestones.find(m_item => m_item.id === dispute.milestone_id)?.amount?.toLocaleString()}
                        </p>
                      </div>
                   </div>
 
                   <div className="p-4 border-b border-border bg-amber-500/[0.03]">
-                     <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1">Dispute Reason</p>
+                     <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1">{t("contract.detail.disputeReason")}</p>
                      <p className="text-xs italic mt-1 text-foreground/80">"{dispute.reason}"</p>
                   </div>
 
@@ -1102,7 +1028,7 @@ const ContractDetail = () => {
                      {disputeMessages.length === 0 ? (
                        <div className="py-12 text-center opacity-50">
                           <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                          <p className="text-sm">No messages yet. Drop a message to the admin.</p>
+                          <p className="text-sm">{t("contract.detail.noDisputeMessages")}</p>
                        </div>
                      ) : (
                        disputeMessages.map((msg) => {
@@ -1113,7 +1039,7 @@ const ContractDetail = () => {
                            <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-bottom-1")}>
                              <div className="flex items-center gap-1.5 mb-1 px-1">
                                <span className={cn("text-[10px] font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
-                                 {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                 {isAdminReply ? t("common.admin") : (msg.profiles?.full_name || t("common.user"))}
                                </span>
                                <span className="text-[9px] text-muted-foreground/50">
                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1136,7 +1062,7 @@ const ContractDetail = () => {
 
                   <form onSubmit={handleSendDisputeMessage} className="p-3 bg-card border-t border-border flex gap-2">
                      <Input 
-                       placeholder="Type a message to the admin..." 
+                       placeholder={t("contract.detail.disputePlaceholderShort")} 
                        className="flex-1 h-9 text-sm bg-background/50"
                        value={newDisputeMessage}
                        onChange={(e) => setNewDisputeMessage(e.target.value)}
@@ -1147,20 +1073,20 @@ const ContractDetail = () => {
                   </form>
                </div>
                <p className="text-[10px] text-muted-foreground mt-3 text-center italic">
-                  This conversation is visible to the Client, Freelancer, and Pactpay Administration.
+                  {t("contract.detail.disputeVisibilityMsg")}
                </p>
-             </div>
-           )}
+              </div>
+            )}
 
             <div className="glass-card p-5">
-              <h3 className="mb-4 font-semibold text-foreground">Milestones</h3>
+              <h3 className="mb-4 font-semibold text-foreground">{t("createContract.labelReviewMilestones")}</h3>
               {milestones.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No milestones found for this contract.</p>
+                <p className="text-sm text-muted-foreground italic">{t("contract.detail.noMilestones")}</p>
               ) : (
                 <div className="space-y-4">
                   {milestones.map((m: any) => {
                     const deliverables = deliverablesByMilestone[m.id] || [];
-                    const milestoneTitle = m.title || m.name || `Milestone ${(m.order_index || 0) + 1}`;
+                    const milestoneTitle = m.title || m.name || t("createContract.milestoneLabel", { num: (m.order_index || 0) + 1 });
                     return (
                       <div key={m.id} className="rounded-lg border border-border bg-card/50 p-4">
                         <div className="flex items-center justify-between mb-1">
@@ -1168,20 +1094,20 @@ const ContractDetail = () => {
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-foreground">${m.amount?.toLocaleString()}</span>
                             <Badge variant="outline" className={`text-xs ${milestoneStatusColors[m.status] || milestoneStatusColors.pending}`}>
-                              {m.status?.replace("_", " ")}
+                              {t(`common.status.${m.status}`, { defaultValue: m.status?.replace("_", " ") })}
                             </Badge>
                           </div>
                         </div>
 
                         {m.due_date && (
                           <p className="mb-3 text-xs text-muted-foreground">
-                            Due: {formatDate(m.due_date)}
+                            {t("createContract.labelMilestoneDueDate")}: {formatDate(m.due_date)}
                           </p>
                         )}
 
                         {deliverables.length > 0 && (
                           <div className="mb-3 space-y-1 border-t border-border/50 pt-3">
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Deliverables</p>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">{t("contract.detail.deliverables")}</p>
                             {deliverables.map((d: any) => (
                               <label key={d.id} className="flex items-center gap-2 text-xs cursor-pointer">
                                 <input
@@ -1199,11 +1125,10 @@ const ContractDetail = () => {
                           </div>
                         )}
 
-                        {/* Submission details display (for Client or completed milestones) */}
                         {(m.submission_note || m.submission_url) && (
                           <div className="mt-4 p-3 rounded bg-primary/5 border border-primary/10 space-y-2">
                             <p className="text-xs font-medium text-primary flex items-center gap-1 uppercase tracking-tight">
-                              <FileText className="h-3 w-3" /> Submission Details
+                              <FileText className="h-3 w-3" /> {t("contract.detail.submissionDetails")}
                             </p>
                             {m.submission_note && (
                               <p className="text-sm text-foreground italic">"{m.submission_note}"</p>
@@ -1217,7 +1142,7 @@ const ContractDetail = () => {
                                     rel="noreferrer"
                                     className="text-xs flex items-center gap-1.5 text-blue-400 hover:underline bg-blue-400/10 px-2 py-1 rounded"
                                   >
-                                    <Download className="h-3.3 w-3.3" /> Download Attached Document
+                                    <Download className="h-3.3 w-3.3" /> {t("contract.detail.downloadAttachment")}
                                   </a>
                                 ) : (
                                   <a 
@@ -1226,7 +1151,7 @@ const ContractDetail = () => {
                                     rel="noreferrer"
                                     className="text-xs flex items-center gap-1.5 text-blue-400 hover:underline bg-blue-400/10 px-2 py-1 rounded"
                                   >
-                                    <ExternalLink className="h-3.3 w-3.3" /> View Deliverable Link
+                                    <ExternalLink className="h-3.3 w-3.3" /> {t("contract.detail.viewLink")}
                                   </a>
                                 )}
                               </div>
@@ -1234,13 +1159,12 @@ const ContractDetail = () => {
                           </div>
                         )}
 
-                        {/* Freelancer Submission Form */}
                         {submittingMilestoneId === m.id && (
                           <div className="mt-4 p-4 rounded-lg bg-card border border-primary/30 space-y-4 animate-in fade-in slide-in-from-top-2">
                             <div className="space-y-2">
-                              <label className="text-xs font-medium text-muted-foreground uppercase">Submission Note</label>
+                              <label className="text-xs font-medium text-muted-foreground uppercase">{t("contract.detail.submissionNote")}</label>
                               <Textarea 
-                                placeholder="Details about this milestone..." 
+                                placeholder={t("contract.detail.submissionNotePlaceholder")} 
                                 value={submissionNote}
                                 onChange={(e) => setSubmissionNote(e.target.value)}
                                 className="min-h-[80px] bg-background/50 text-sm"
@@ -1249,7 +1173,7 @@ const ContractDetail = () => {
                             
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div className="space-y-2">
-                                <label className="text-xs font-medium text-muted-foreground uppercase">Deliverable Link</label>
+                                <label className="text-xs font-medium text-muted-foreground uppercase">{t("contract.detail.deliverableLink")}</label>
                                 <div className="relative">
                                   <Link className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                                   <Input 
@@ -1263,7 +1187,7 @@ const ContractDetail = () => {
                               </div>
                               
                               <div className="space-y-2">
-                                <label className="text-xs font-medium text-muted-foreground uppercase">Or Upload File</label>
+                                <label className="text-xs font-medium text-muted-foreground uppercase">{t("contract.detail.uploadFile")}</label>
                                 <div className="flex items-center gap-2">
                                   <Button 
                                     type="button" 
@@ -1279,7 +1203,7 @@ const ContractDetail = () => {
                                     />
                                     <Upload className="h-4 w-4 mr-2 text-primary" />
                                     <span className="text-xs truncate">
-                                      {submissionFile ? submissionFile.name : "Choose file..."}
+                                      {submissionFile ? submissionFile.name : t("kyc.clickToUpload")}
                                     </span>
                                   </Button>
                                   {submissionFile && (
@@ -1293,7 +1217,7 @@ const ContractDetail = () => {
 
                             <div className="flex gap-2 justify-end pt-2">
                               <Button size="sm" variant="ghost" onClick={() => setSubmittingMilestoneId(null)}>
-                                Cancel
+                                {t("common.cancel")}
                               </Button>
                               <Button 
                                 size="sm" 
@@ -1301,7 +1225,7 @@ const ContractDetail = () => {
                                 onClick={() => handleMarkReadyWithSubmission(m.id)}
                                 disabled={isUploading}
                               >
-                                {isUploading ? "Uploading..." : "Submit for Review"}
+                                {isUploading ? t("common.processing") : t("contract.detail.submitReviewBtn")}
                               </Button>
                             </div>
                           </div>
@@ -1311,10 +1235,10 @@ const ContractDetail = () => {
                           {isClient && m.status === "in_review" && contract.status === "active" && (
                             <>
                               <Button size="sm" variant="hero" onClick={() => setReleasingMilestone(m)}>
-                                Approve & Release
+                                {t("contract.detail.approveReleaseBtn")}
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => setRequestingRevision(m)}>
-                                Request Revision
+                                {t("contract.detail.requestRevisionBtn")}
                               </Button>
                             </>
                           )}
@@ -1323,24 +1247,23 @@ const ContractDetail = () => {
                             ["pending", "in_review", "revision"].includes(m.status) &&
                             contract.status === "active" && m.status !== "disputed" && (
                               <Button size="sm" variant="destructive" onClick={() => setDisputingMilestone(m)}>
-                                Raise Dispute
+                                {t("contract.detail.raiseDisputeBtn")}
                               </Button>
                             )}
 
                           {isFreelancer && ["pending", "revision"].includes(m.status) && contract.status === "active" && !submittingMilestoneId && (
                             <Button size="sm" variant="hero" onClick={() => setSubmittingMilestoneId(m.id)}>
-                              {m.status === "revision" ? "Re-submit for Review" : "Mark Ready for Review"}
+                              {m.status === "revision" ? t("contract.detail.reSubmitBtn") : t("contract.detail.markReadyBtn")}
                             </Button>
                           )}
 
                           {m.status === "completed" && (
                             <span className="text-xs text-green-400 font-medium flex items-center gap-1">
-                              <CheckCircle className="h-3 w-3" /> Released
+                              <CheckCircle className="h-3 w-3" /> {t("contract.detail.released")}
                             </span>
                           )}
                         </div>
 
-                        {/* Milestone History Toggle */}
                         {milestoneHistory[m.id] && milestoneHistory[m.id].length > 0 && (
                           <div className="mt-4 border-t border-border/30 pt-3">
                             <button 
@@ -1348,7 +1271,7 @@ const ContractDetail = () => {
                               className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors mb-2"
                             >
                               <Clock className="h-3 w-3" />
-                              View History ({milestoneHistory[m.id].length})
+                              {t("contract.detail.viewHistory", { count: milestoneHistory[m.id].length })}
                               {expandedHistory[m.id] ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                             </button>
                             
@@ -1363,7 +1286,7 @@ const ContractDetail = () => {
                                         ) : (
                                           <MessageSquare className="h-2.5 w-2.5 text-amber-400" />
                                         )}
-                                        {event.type === 'submission' ? 'Freelancer Submitted' : 'Client Requested Revision'}
+                                        {event.type === 'submission' ? t("contract.detail.freelancerSubmitted") : t("contract.detail.clientRequestedRevision")}
                                       </span>
                                       <span>{new Date(event.created_at).toLocaleDateString()}</span>
                                     </div>
@@ -1379,7 +1302,7 @@ const ContractDetail = () => {
                                           className="text-[10px] flex items-center gap-1 text-blue-400 hover:underline"
                                         >
                                           {event.attachment_url.includes('supabase.co') ? <Download className="h-2.5 w-2.5" /> : <Link className="h-2.5 w-2.5" />}
-                                          {event.attachment_url.includes('supabase.co') ? 'Download Attachment' : 'View External Link'}
+                                          {event.attachment_url.includes('supabase.co') ? t("contract.detail.downloadAttachment") : t("contract.detail.viewLink")}
                                         </a>
                                       </div>
                                     )}
@@ -1400,22 +1323,22 @@ const ContractDetail = () => {
           <div className="space-y-6">
             {isClient && contract.status === "pending" && !isFunded && (
               <div className="glass-card p-5 border-primary/30 bg-primary/5">
-                <h3 className="mb-3 font-semibold text-foreground">Fund Contract</h3>
+                <h3 className="mb-3 font-semibold text-foreground">{t("contract.detail.fundContract")}</h3>
                 <div className="space-y-2 mb-4 text-sm">
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Milestones Total</span>
+                    <span>{t("createContract.reviewMilestonesTotal")}</span>
                     <span className="text-foreground">${(contract.total_amount * 0.98).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Platform Fee (2%)</span>
+                    <span>{t("createContract.reviewPlatformFee")}</span>
                     <span className="text-foreground">${(contract.total_amount * 0.02).toFixed(2)}</span>
                   </div>
                   <div className="border-t border-border/50 pt-2 flex justify-between font-semibold text-foreground">
-                    <span>Total required to fund</span>
+                    <span>{t("contract.detail.totalRequired")}</span>
                     <span>${contract.total_amount?.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-xs mt-3 pt-2 border-t border-border/50">
-                    <span className="text-muted-foreground">Your Wallet Balance</span>
+                    <span className="text-muted-foreground">{t("contract.detail.walletBalance")}</span>
                     <span className={walletBalance >= totalRequired ? "text-green-400" : "text-red-400"}>
                       ${walletBalance.toLocaleString()}
                     </span>
@@ -1424,56 +1347,56 @@ const ContractDetail = () => {
 
                 {!kycVerified ? (
                   <p className="text-xs text-amber-400 text-center py-2">
-                    KYC required. <a href="/profile" className="underline">Check status</a>
+                    {t("contract.detail.kycRequiredToFund")} <button onClick={() => navigate("/profile")} className="underline">{t("contract.detail.checkStatus")}</button>
                   </p>
                 ) : walletBalance >= totalRequired ? (
                   <Button className="w-full" variant="hero" onClick={handleFundContract} disabled={funding}>
-                    {funding ? "Processing..." : "Fund Contract"}
+                    {funding ? t("common.processing") : t("contract.detail.fundContractBtn")}
                   </Button>
                 ) : (
                   <Button className="w-full" variant="outline" onClick={() => navigate("/dashboard")}>
-                    Insufficient balance — Top Up Wallet
+                    {t("contract.detail.insufficientFundBtn")}
                   </Button>
                 )}
               </div>
             )}
 
             <div className="glass-card p-5">
-              <h3 className="mb-3 text-sm font-medium text-muted-foreground">Escrow Status</h3>
+              <h3 className="mb-3 text-sm font-medium text-muted-foreground">{t("contract.detail.escrowStatus")}</h3>
               {isFunded ? (
                 <>
                   <p className="text-2xl font-bold text-foreground">${escrowAmount.toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground">
-                    {escrowAmount > 0 ? "Funds held in escrow" : "All funds released"}
+                    {escrowAmount > 0 ? t("contract.detail.fundsHeld") : t("contract.detail.allReleased")}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-lg font-semibold text-amber-400">Awaiting deposit</p>
+                  <p className="text-lg font-semibold text-amber-400">{t("contract.detail.awaitingDeposit")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Client must deposit ${contract.total_amount?.toLocaleString()} to activate
+                    {t("contract.detail.depositRequiredMsg", { amount: contract.total_amount?.toLocaleString() })}
                   </p>
                 </>
               )}
             </div>
 
             <div className="glass-card p-5 space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground">Contract Details</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">{t("contract.detail.contractDetails")}</h3>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Milestones Total</span>
+                <span className="text-muted-foreground">{t("createContract.reviewMilestonesTotal")}</span>
                 <span className="text-foreground">${(contract.total_amount * 0.98).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Platform Fee (2% incl.)</span>
+                <span className="text-muted-foreground">{t("createContract.reviewPlatformFee")}</span>
                 <span className="text-foreground">${(contract.total_amount * 0.02).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold border-t border-border/50 pt-2">
-                <span className="text-muted-foreground">Total Budget</span>
+                <span className="text-muted-foreground">{t("createContract.labelTotal")}</span>
                 <span className="text-foreground">${contract.total_amount?.toLocaleString()}</span>
               </div>
               {contract.deadline && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Deadline</span>
+                  <span className="text-muted-foreground">{t("createContract.labelDeadline")}</span>
                   <span className="text-foreground">{formatDate(contract.deadline)}</span>
                 </div>
               )}
@@ -1483,7 +1406,7 @@ const ContractDetail = () => {
                 <div className="px-4 py-3 border-b border-border bg-amber-500/5 flex justify-between items-center">
                    <h3 className="text-xs font-bold text-foreground flex items-center gap-2">
                      <ShieldAlert className="h-3 w-3 text-amber-500" />
-                     Mediation Center
+                     {t("contract.detail.mediationCenter")}
                    </h3>
                 </div>
 
@@ -1491,7 +1414,7 @@ const ContractDetail = () => {
                    {!dispute ? (
                      <div className="py-4 text-center">
                         <CheckCircle className="h-8 w-8 text-green-500/20 mx-auto mb-2" />
-                        <p className="text-[10px] text-muted-foreground italic">No disputes recorded for this contract.</p>
+                        <p className="text-[10px] text-muted-foreground italic">{t("contract.detail.noDisputes")}</p>
                      </div>
                    ) : (
                      <div className="space-y-2">
@@ -1501,10 +1424,10 @@ const ContractDetail = () => {
                                 <div className="flex justify-between items-start">
                                   <div className="flex-1">
                                     <p className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter mb-1">
-                                      Dispute #{dispute.id.substring(0,8)}
+                                      {t("common.dispute")} #{dispute.id.substring(0,8)}
                                     </p>
                                     <p className="text-xs font-semibold text-foreground line-clamp-1">
-                                      {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "General Dispute"}
+                                      {milestones.find(m_item => m_item.id === dispute.milestone_id)?.title || milestones.find(m_item => m_item.id === dispute.milestone_id)?.name || t("contract.detail.generalDispute")}
                                     </p>
                                     <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 italic">
                                       "{dispute.reason}"
@@ -1516,7 +1439,7 @@ const ContractDetail = () => {
                                       dispute.status === 'open' ? "bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse" : 
                                       "bg-green-500/10 text-green-500 border-green-500/20"
                                     )}>
-                                      {dispute.status || 'RESOLVED'}
+                                      {t(`common.status.${dispute.status}`, { defaultValue: dispute.status || 'RESOLVED' })}
                                     </Badge>
                                     <Maximize2 className="h-3 w-3 text-muted-foreground group-hover:text-amber-500 transition-colors" />
                                   </div>
@@ -1527,10 +1450,10 @@ const ContractDetail = () => {
                                   <div>
                                     <DialogTitle className="text-xl font-bold flex items-center gap-2">
                                       <MessageSquare className="h-5 w-5 text-amber-500" />
-                                      Dispute Resolution Center
+                                      {t("contract.detail.disputeCenterTitle")}
                                     </DialogTitle>
                                     <DialogDescription className="text-xs text-muted-foreground mt-1">
-                                      {dispute.status === 'open' ? 'Active mediation session' : 'Archived mediation transcript'} for Dispute #{dispute.id.substring(0,8)}
+                                      {dispute.status === 'open' ? t("contract.detail.activeMediation") : t("contract.detail.archivedMediation")} {t("common.dispute")} #{dispute.id.substring(0,8)}
                                     </DialogDescription>
                                   </div>
                                   <Badge variant="outline" className={cn(
@@ -1538,26 +1461,26 @@ const ContractDetail = () => {
                                     dispute.status === 'open' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : 
                                     "bg-green-500/10 text-green-500 border-green-500/20"
                                   )}>
-                                    {dispute.status?.toUpperCase() || 'RESOLVED'}
+                                    {t(`common.status.${dispute.status}`, { defaultValue: dispute.status?.toUpperCase() || 'RESOLVED' })}
                                   </Badge>
                                 </div>
                                 
                                 <div className="flex-1 flex overflow-hidden">
                                   <div className="w-64 border-r border-border p-6 bg-muted/20 hidden md:block">
-                                    <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">Dispute Context</h4>
+                                    <h4 className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-4">{t("contract.detail.disputeContext")}</h4>
                                     <div className="space-y-4">
                                       <div>
-                                        <p className="text-[10px] text-muted-foreground uppercase">Contract</p>
+                                        <p className="text-[10px] text-muted-foreground uppercase">{t("common.contract")}</p>
                                         <p className="text-sm font-semibold">{contract.title}</p>
                                       </div>
                                       <div>
-                                        <p className="text-[10px] text-muted-foreground uppercase">Reason</p>
+                                        <p className="text-[10px] text-muted-foreground uppercase">{t("common.reason")}</p>
                                         <p className="text-xs italic mt-1 text-muted-foreground/80">"{dispute.reason}"</p>
                                       </div>
                                       <div>
-                                        <p className="text-[10px] text-muted-foreground uppercase">Milestone</p>
+                                        <p className="text-[10px] text-muted-foreground uppercase">{t("common.milestone")}</p>
                                         <p className="text-xs font-medium">
-                                          {milestones.find(m => m.id === dispute.milestone_id)?.title || milestones.find(m => m.id === dispute.milestone_id)?.name || "N/A"}
+                                          {milestones.find(m_item => m_item.id === dispute.milestone_id)?.title || milestones.find(m_item => m_item.id === dispute.milestone_id)?.name || "N/A"}
                                         </p>
                                       </div>
                                     </div>
@@ -1572,7 +1495,7 @@ const ContractDetail = () => {
                                            <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start animate-in fade-in slide-in-from-left-2")}>
                                              <div className="flex items-center gap-2 mb-1.5 px-1">
                                                <span className={cn("text-xs font-bold", isAdminReply ? "text-amber-500" : "text-muted-foreground")}>
-                                                 {isAdminReply ? "Pactpay Admin" : (msg.profiles?.full_name || 'User')}
+                                                 {isAdminReply ? t("common.admin") : (msg.profiles?.full_name || t("common.user"))}
                                                </span>
                                                <span className="text-[10px] text-muted-foreground/40 font-medium">
                                                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1594,7 +1517,7 @@ const ContractDetail = () => {
                                     {dispute.status === 'open' ? (
                                       <form onSubmit={handleSendDisputeMessage} className="p-4 bg-card border-t border-border flex gap-3">
                                          <Input 
-                                           placeholder="Type a message to the mediation team..." 
+                                           placeholder={t("contract.detail.disputePlaceholder")} 
                                            className="flex-1 h-11 bg-background/50 border-border focus:border-primary/50 transition-all shadow-inner"
                                            value={newDisputeMessage}
                                            onChange={(e) => setNewDisputeMessage(e.target.value)}
@@ -1603,13 +1526,7 @@ const ContractDetail = () => {
                                            <Send className="h-5 w-5" />
                                          </Button>
                                       </form>
-                                    ) : (
-                                      <div className="p-4 bg-muted/30 border-t border-border text-center">
-                                         <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-                                           Chat is read-only — Dispute Resolved
-                                         </p>
-                                      </div>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </div>
                               </DialogContent>
@@ -1618,123 +1535,93 @@ const ContractDetail = () => {
                      </div>
                    )}
                 </div>
-                
-                <div className="px-4 py-2 bg-amber-500/5 border-t border-border">
-                   <p className="text-[9px] text-muted-foreground text-center">
-                      Secure mediation is powered by Pactpay Escrow Services.
-                   </p>
-                </div>
-              </div>
+             </div>
 
-            {isClient && !isFunded && ["pending", "draft"].includes(contract.status) && (
-              <div className="pt-2">
-                <Button 
-                  variant="destructive" 
-                  className="w-full bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20" 
-                  onClick={() => setDeletingContract(true)}
-                >
-                  Delete Contract
-                </Button>
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  This action cannot be undone.
-                </p>
+            <div className="mt-8 flex justify-between items-center pt-8 border-t border-border/50">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{t("contract.detail.dangerZone")}</p>
+                <p className="text-[10px] text-muted-foreground">{t("contract.detail.dangerZoneDesc")}</p>
               </div>
-            )}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleDeleteContract}
+              >
+                {t("contract.detail.deleteContractBtn")}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      <Dialog open={!!releasingMilestone} onOpenChange={(open) => !open && setReleasingMilestone(null)}>
-        <DialogContent>
+      <Dialog open={!!releasingMilestone} onOpenChange={() => setReleasingMilestone(null)}>
+        <DialogContent className="glass-card sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Approve & Release Funds</DialogTitle>
+            <DialogTitle>{t("contract.detail.confirmReleaseTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve "{releasingMilestone?.title || releasingMilestone?.name}"?
-              This will permanently release ${releasingMilestone?.amount?.toLocaleString()} to the freelancer's wallet.
+              {t("contract.detail.confirmReleaseMsg", { amount: releasingMilestone?.amount?.toLocaleString(), milestone: releasingMilestone?.title || releasingMilestone?.name })}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="ghost" onClick={() => setReleasingMilestone(null)} disabled={funding}>Cancel</Button>
+          <DialogFooter className="mt-4 gap-2">
+            <Button variant="ghost" onClick={() => setReleasingMilestone(null)}>{t("common.cancel")}</Button>
             <Button variant="hero" onClick={executeApprove} disabled={funding}>
-              {funding ? "Processing..." : "Release Funds"}
+              {funding ? t("common.processing") : t("contract.detail.confirmReleaseBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!disputingMilestone} onOpenChange={(open) => { if (!open) { setDisputingMilestone(null); setDisputeReason(""); } }}>
-        <DialogContent>
+      <Dialog open={!!disputingMilestone} onOpenChange={() => setDisputingMilestone(null)}>
+        <DialogContent className="glass-card sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Raise a Dispute</DialogTitle>
+            <DialogTitle>{t("contract.detail.raiseDisputeTitle")}</DialogTitle>
             <DialogDescription>
-              Raising a dispute will freeze all funds on this contract until our team resolves the issue.
+              {t("contract.detail.raiseDisputeMsg", { milestone: disputingMilestone?.title || disputingMilestone?.name })}
             </DialogDescription>
           </DialogHeader>
-          <div className="my-4 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Milestone: <span className="text-foreground font-medium">{disputingMilestone?.title || disputingMilestone?.name}</span>
-            </p>
-            <Textarea
-              placeholder="Describe the issue in detail..."
+          <div className="space-y-3 py-4">
+            <Label>{t("contract.detail.disputeReasonLabel")}</Label>
+            <Textarea 
+              placeholder={t("contract.detail.disputeReasonPlaceholder")}
               value={disputeReason}
               onChange={(e) => setDisputeReason(e.target.value)}
-              rows={4}
+              className="min-h-[100px]"
             />
+            <p className="text-[10px] text-muted-foreground italic">
+              {t("contract.detail.disputeFreezeMsg")}
+            </p>
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setDisputingMilestone(null); setDisputeReason(""); }} disabled={submittingDispute}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleSubmitDispute} disabled={submittingDispute || !disputeReason.trim()}>
-              {submittingDispute ? "Submitting..." : "Raise Dispute"}
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setDisputingMilestone(null)}>{t("common.cancel")}</Button>
+            <Button variant="destructive" onClick={handleSubmitDispute} disabled={submittingDispute}>
+              {submittingDispute ? t("common.submitting") : t("contract.detail.confirmDisputeBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={deletingContract} onOpenChange={(open) => !open && setDeletingContract(false)}>
-        <DialogContent>
+      <Dialog open={!!requestingRevision} onOpenChange={() => setRequestingRevision(null)}>
+        <DialogContent className="glass-card sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Contract</DialogTitle>
+            <DialogTitle>{t("contract.detail.requestRevisionTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{contract?.title}"? This action cannot be undone and any sent invites will become invalid.
+              {t("contract.detail.requestRevisionDesc", { milestone: requestingRevision?.title || requestingRevision?.name })}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="ghost" onClick={() => setDeletingContract(false)} disabled={isDeleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteContract} disabled={isDeleting}>
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Revision Dialog */}
-      <Dialog open={!!requestingRevision} onOpenChange={(open) => !open && setRequestingRevision(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Request a Revision</DialogTitle>
-            <DialogDescription>
-              Provide clear feedback to the freelancer on what needs to be changed for "{requestingRevision?.title || requestingRevision?.name}".
-            </DialogDescription>
-          </DialogHeader>
-          <div className="my-4 space-y-4">
-            <Textarea
-              placeholder="Example: The logo should be slightly larger and the blue color should be darker..."
+          <div className="space-y-3 py-4">
+            <Label>{t("contract.detail.feedbackLabel")}</Label>
+            <Textarea 
+              placeholder={t("contract.detail.feedbackPlaceholder")}
               value={revisionFeedback}
               onChange={(e) => setRevisionFeedback(e.target.value)}
-              rows={5}
-              className="bg-background/50"
+              className="min-h-[100px]"
             />
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setRequestingRevision(null)} disabled={submittingHistory}>
-              Cancel
-            </Button>
-            <Button variant="hero" onClick={executeRequestRevision} disabled={submittingHistory || !revisionFeedback.trim()}>
-              {submittingHistory ? "Sending..." : "Send Revision Feedback"}
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setRequestingRevision(null)}>{t("common.cancel")}</Button>
+            <Button variant="hero" onClick={executeRequestRevision}>
+              {t("contract.detail.sendRevisionBtn")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase, SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 import DashboardNavbar from "@/components/dashboard/DashboardNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Plus, Trash2, ArrowLeft, ArrowRight, Check, AlertTriangle, ShieldAlert 
 import { UserSearch } from "@/components/contract/UserSearch";
 import { DatePicker } from "@/components/ui/date-picker";
 import { toYMD, formatDate, fromYMD } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 type PaymentMode = "fixed" | "percentage";
 
@@ -26,6 +27,7 @@ interface Milestone {
 const CreateContract = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [kycVerified, setKycVerified] = useState<boolean | null>(null);
@@ -44,7 +46,6 @@ const CreateContract = () => {
     { name: "", amount: "", due_date: "", paymentMode: "fixed", percentage: "" },
   ]);
 
-  // Check KYC and Consent on mount
   useEffect(() => {
     const checkStatus = async () => {
       if (!user) return;
@@ -55,7 +56,6 @@ const CreateContract = () => {
         .maybeSingle();
       
       if (data && !data.consent_given) {
-        console.log("CreateContract: Consent not given, redirecting...");
         navigate("/consent?redirect=/contracts/new");
         return;
       }
@@ -64,7 +64,7 @@ const CreateContract = () => {
       setKycLoading(false);
     };
     checkStatus();
-  }, [user]);
+  }, [user, navigate]);
 
   const getMilestoneAmount = (m: Milestone, netTotal: number): number => {
     if (m.paymentMode === "fixed") return parseFloat(m.amount) || 0;
@@ -73,9 +73,7 @@ const CreateContract = () => {
   };
 
   const contractTotalNum = parseFloat(contractTotal) || 0;
-  // 98% is available for milestones
   const netTotalNum = contractTotalNum * 0.98;
-  
   const platformFee = contractTotalNum * 0.02;
   const totalMilestones = milestones.reduce((sum, m) => sum + getMilestoneAmount(m, netTotalNum), 0);
   const totalsMatch = contractTotalNum === 0 || Math.abs(totalMilestones - netTotalNum) < 0.01;
@@ -117,7 +115,7 @@ const CreateContract = () => {
       .single();
 
     if (error) {
-      toast.error("Failed to create contract: " + error.message);
+      toast.error(t("createContract.error.failed") + ": " + error.message);
       setSaving(false);
       return;
     }
@@ -132,8 +130,6 @@ const CreateContract = () => {
     }));
 
     const { error: mError } = await supabase.from("milestones").insert(milestoneData);
-    
-    // Insert into new contract_invites table
     const { data: invite, error: inviteError } = await supabase
       .from("contract_invites")
       .insert({
@@ -144,22 +140,20 @@ const CreateContract = () => {
       .single();
 
     if (mError || inviteError) {
-      toast.error("Contract created but failed to link milestones or invite: " + (mError?.message || inviteError?.message));
+      toast.error(t("createContract.error.partial") + ": " + (mError?.message || inviteError?.message));
     } else {
-      toast.success("Contract created successfully!");
+      toast.success(t("createContract.success"));
       
-      // If freelancer exists in app, send internal notification
       if (freelancerId) {
         await supabase.from("notifications").insert({
           user_id: freelancerId,
           type: "invite",
-          title: "New Contract Invite",
-          message: `You have been invited to a new contract: ${title}`,
+          title: t("contract.notif.newInviteTitle"),
+          message: t("contract.notif.newInviteMsg", { title }),
           link: `/contracts/${contract.id}`
         });
       }
 
-      // Send invite email via Edge Function in all cases (backup)
       try {
         await supabase.functions.invoke("send-email", {
           body: { type: "invite", contract_id: contract.id, invite_id: invite.id }
@@ -183,14 +177,11 @@ const CreateContract = () => {
     return hasName && hasAmount;
   });
 
-  const getMilestoneDateMax = () => deadline || "";
-
-  // Loading state
   if (kycLoading) {
     return (
       <div className="min-h-screen bg-background">
         <DashboardNavbar />
-        <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">Loading...</div>
+        <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">{t("common.loading")}</div>
       </div>
     );
   }
@@ -199,41 +190,37 @@ const CreateContract = () => {
     <div className="min-h-screen bg-background">
       <DashboardNavbar />
       <div className="container mx-auto max-w-2xl px-4 py-6 md:py-12">
-        <h1 className="mb-6 md:mb-8 text-2xl md:text-3xl font-bold text-foreground tracking-tight">Create a Contract</h1>
+        <h1 className="mb-6 md:mb-8 text-2xl md:text-3xl font-bold text-foreground tracking-tight">{t("createContract.title")}</h1>
 
-        {/* KYC Gate — block form if not verified */}
         {!kycVerified && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-4">
             <ShieldAlert className="h-10 w-10 text-amber-400 mx-auto" />
-            <h2 className="text-lg font-semibold text-amber-400">Identity Verification Required</h2>
+            <h2 className="text-lg font-semibold text-amber-400">{t("createContract.kycRequiredTitle")}</h2>
             <p className="text-sm text-muted-foreground">
-              Your identity is pending verification. You will be able to create contracts once your KYC is approved by our team.
+              {t("createContract.kycRequiredMsg")}
             </p>
             <Button variant="outline" onClick={() => navigate("/profile")}>
-              View KYC Status
+              {t("createContract.viewKycStatus")}
             </Button>
           </div>
         )}
 
-        {/* Only show form if KYC verified */}
         {kycVerified && (
           <>
-            {/* Progress bar */}
-            <div className="mb-8 flex items-center gap-2">
+            <div className="mb-8 flex items-center justify-center w-full max-w-md mx-auto">
               {[1, 2, 3].map((s) => (
-                <div key={s} className="flex flex-1 items-center gap-2">
+                <div key={s} className={`flex items-center ${s < 3 ? "flex-1" : ""}`}>
                   <div
                     className={`flex h-8 w-8 md:h-10 md:w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors ${s <= step ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-card border border-border text-muted-foreground"
                       }`}
                   >
                     {s < step ? <Check className="h-4 w-4 md:h-5 md:w-5" /> : s}
                   </div>
-                  {s < 3 && <div className={`h-1 flex-1 rounded-full ${s < step ? "bg-primary" : "bg-border/50"}`} />}
+                  {s < 3 && <div className={`h-1 flex-1 mx-2 sm:mx-4 rounded-full ${s < step ? "bg-primary" : "bg-border/50"}`} />}
                 </div>
               ))}
             </div>
 
-            {/* Step 1 */}
             {step === 1 && (
               <form 
                 onSubmit={(e) => {
@@ -242,24 +229,24 @@ const CreateContract = () => {
                 }}
                 className="glass-card space-y-5 p-5 md:p-8"
               >
-                <h2 className="text-lg font-semibold text-foreground">Contract Basics</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t("createContract.step1Title")}</h2>
                 <div>
-                  <Label htmlFor="title">Contract title <span className="text-destructive">*</span></Label>
-                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Website Redesign" required autoFocus />
+                  <Label htmlFor="title">{t("createContract.labelTitle")} <span className="text-destructive">*</span></Label>
+                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("createContract.placeholderTitle")} required autoFocus />
                 </div>
                 <div>
-                  <Label htmlFor="description">Scope of work <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="description">{t("createContract.labelScope")} <span className="text-destructive">*</span></Label>
                   <Textarea
                     id="description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe the project in detail..."
+                    placeholder={t("createContract.placeholderScope")}
                     rows={5}
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="contractTotal">Contract total (USD) <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="contractTotal">{t("createContract.labelTotal")} <span className="text-destructive">*</span></Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                     <Input
@@ -272,14 +259,14 @@ const CreateContract = () => {
                       required
                     />
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">Used to calculate percentage-based milestones</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("createContract.totalDesc")}</p>
                 </div>
                 <div>
-                  <Label htmlFor="deadline">Overall deadline</Label>
+                  <Label htmlFor="deadline">{t("createContract.labelDeadline")}</Label>
                   <DatePicker
                     date={fromYMD(deadline)}
                     setDate={(date) => setDeadline(toYMD(date))}
-                    placeholder="Pick a deadline"
+                    placeholder={t("createContract.placeholderDeadline")}
                     className="mt-1"
                     calendarProps={{
                       fromYear: new Date().getFullYear(),
@@ -289,7 +276,7 @@ const CreateContract = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="freelancerEmail">Freelancer <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="freelancerEmail">{t("createContract.labelFreelancer")} <span className="text-destructive">*</span></Label>
                   <UserSearch
                     onSelect={(selectedUser) => {
                       if (selectedUser) {
@@ -305,17 +292,16 @@ const CreateContract = () => {
                     }}
                     defaultValue={freelancerEmail}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Search by name or type their email to invite them</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("createContract.freelancerDesc")}</p>
                 </div>
                 <div className="flex justify-end">
                   <Button type="submit" variant="hero" disabled={!canProceedStep1}>
-                    Next <ArrowRight className="ml-1 h-4 w-4" />
+                    {t("common.next")} <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>
               </form>
             )}
 
-            {/* Step 2 */}
             {step === 2 && (
               <form 
                 onSubmit={(e) => {
@@ -324,7 +310,7 @@ const CreateContract = () => {
                 }}
                 className="glass-card space-y-6 p-5 md:p-8"
               >
-                <h2 className="text-lg font-semibold text-foreground">Milestones</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t("createContract.step2Title")}</h2>
 
                 {milestones.map((m, i) => {
                   const dollarAmount = getMilestoneAmount(m, netTotalNum);
@@ -332,7 +318,7 @@ const CreateContract = () => {
                   return (
                     <div key={i} className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">Milestone {i + 1}</span>
+                        <span className="text-sm font-medium text-muted-foreground">{t("createContract.milestoneLabel", { num: i + 1 })}</span>
                         {milestones.length > 1 && (
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeMilestone(i)}>
                             <Trash2 className="h-4 w-4" />
@@ -343,71 +329,68 @@ const CreateContract = () => {
                       <Input
                         value={m.name}
                         onChange={(e) => updateMilestone(i, "name", e.target.value)}
-                        placeholder="Milestone name"
+                        placeholder={t("createContract.milestoneNamePlaceholder")}
                       />
 
-                      {/* Payment mode toggle */}
                       <div className="flex rounded-lg border border-border overflow-hidden text-sm">
                         <button
                           type="button"
                           className={`flex-1 py-1.5 px-3 transition-colors ${m.paymentMode === "fixed" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
                           onClick={() => updateMilestone(i, "paymentMode", "fixed")}
                         >
-                          Fixed Amount
+                          {t("createContract.fixedAmount")}
                         </button>
                         <button
                           type="button"
                           className={`flex-1 py-1.5 px-3 transition-colors ${m.paymentMode === "percentage" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted"}`}
                           onClick={() => updateMilestone(i, "paymentMode", "percentage")}
                         >
-                          % of Total
+                          {t("createContract.percentageOfTotal")}
                         </button>
                       </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="flex flex-row gap-3 sm:gap-4 items-center">
                         {m.paymentMode === "fixed" ? (
-                          <div className="relative">
+                          <div className="w-1/3 relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                             <Input
                               type="number"
-                              className="pl-7 h-11 sm:h-10"
+                              className="pl-7 h-11 sm:h-9"
                               value={m.amount}
                               onChange={(e) => updateMilestone(i, "amount", e.target.value)}
-                              placeholder="Amount (USD)"
+                              placeholder={t("createContract.amountPlaceholder")}
                             />
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            <div className="relative">
-                              <Input
-                                type="number"
-                                className="h-11 sm:h-10"
-                                value={m.percentage}
-                                onChange={(e) => updateMilestone(i, "percentage", e.target.value)}
-                                placeholder="Percentage"
-                                max={100}
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
-                            </div>
+                          <div className="w-1/3 relative">
+                            <Input
+                              type="number"
+                              className="h-11 sm:h-9"
+                              value={m.percentage}
+                              onChange={(e) => updateMilestone(i, "percentage", e.target.value)}
+                              placeholder={t("createContract.percentagePlaceholder")}
+                              max={100}
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
                             {m.percentage && (
-                              <p className="text-xs text-primary font-medium">= ${dollarAmount.toLocaleString()}</p>
+                              <p className="text-[10px] sm:text-xs text-primary font-medium absolute mt-0.5 whitespace-nowrap">= ${dollarAmount.toLocaleString()}</p>
                             )}
                           </div>
                         )}
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Due Date</Label>
+                        <div className="flex-1 flex flex-row items-center gap-2 sm:gap-3">
+                          <Label className="text-xs sm:text-sm font-medium whitespace-nowrap m-0">{t("createContract.labelMilestoneDueDate")}</Label>
                           <DatePicker
                             date={fromYMD(m.due_date)}
                             setDate={(date) => {
                               const dateStr = toYMD(date);
                               if (deadline && dateStr > deadline) {
-                                toast.error(`Milestone date cannot be after the contract deadline (${formatDate(deadline)})`);
+                                toast.error(t("createContract.error.milestoneExceedsDeadline", { deadline: formatDate(deadline) }));
                                 return;
                               }
                               updateMilestone(i, "due_date", dateStr);
                             }}
-                            placeholder="Due date"
+                            placeholder={t("createContract.placeholderDueDate")}
                             className="h-11 sm:h-9 text-sm w-full"
                             calendarProps={{
                               fromYear: new Date().getFullYear(),
@@ -419,7 +402,7 @@ const CreateContract = () => {
                       </div>
                       {dateExceedsDeadline && (
                         <p className="text-xs text-destructive flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" /> Exceeds contract deadline
+                          <AlertTriangle className="h-3 w-3" /> {t("createContract.error.exceedsDeadline")}
                         </p>
                       )}
                     </div>
@@ -427,64 +410,62 @@ const CreateContract = () => {
                 })}
 
                 <Button variant="outline" className="w-full" onClick={addMilestone}>
-                  <Plus className="mr-1 h-4 w-4" /> Add milestone
+                  <Plus className="mr-1 h-4 w-4" /> {t("createContract.addMilestone")}
                 </Button>
 
-                {/* Running total */}
                 <div className={`rounded-lg p-4 space-y-2 border ${totalsMatch ? "border-border bg-card/30" : "border-destructive/50 bg-destructive/5"}`}>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Milestones Sum</span>
+                    <span className="text-muted-foreground">{t("createContract.milestonesSum")}</span>
                     <span className="font-semibold text-foreground">${totalMilestones.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   {contractTotalNum > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Milestone Budget</span>
+                      <span className="text-muted-foreground">{t("createContract.milestoneBudget")}</span>
                       <span className="font-semibold text-foreground">${netTotalNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   )}
                   {!totalsMatch && contractTotalNum > 0 && (
                     <div className="flex items-center gap-2 pt-1 text-sm text-destructive font-medium">
                       <AlertTriangle className="h-4 w-4 shrink-0" />
-                      Milestones must sum to $ {netTotalNum.toFixed(2)} (100% of Milestone Budget).
+                      {t("createContract.error.sumMismatch", { budget: netTotalNum.toFixed(2) })}
                     </div>
                   )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-border/50">
                   <Button type="button" variant="ghost" onClick={() => setStep(1)} className="h-11 sm:h-10">
-                    <ArrowLeft className="mr-1 h-4 w-4" /> Back
+                    <ArrowLeft className="mr-1 h-4 w-4" /> {t("common.back")}
                   </Button>
                   <Button type="submit" variant="hero" disabled={!canProceedStep2 || !totalsMatch} className="h-11 sm:h-10">
-                    Preview Contract <ArrowRight className="ml-1 h-4 w-4" />
+                    {t("createContract.previewBtn")} <ArrowRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>
               </form>
             )}
 
-            {/* Step 3 — Review */}
             {step === 3 && (
               <div className="glass-card space-y-5 p-6">
-                <h2 className="text-lg font-semibold text-foreground">Review & Send</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t("createContract.step3Title")}</h2>
 
                 <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Title</span>
+                    <span className="text-muted-foreground">{t("createContract.labelReviewTitle")}</span>
                     <span className="text-foreground font-medium">{title}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Freelancer</span>
+                    <span className="text-muted-foreground">{t("createContract.labelReviewFreelancer")}</span>
                     <span className="text-foreground">{freelancerEmail}</span>
                   </div>
                   {deadline && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Deadline</span>
+                      <span className="text-muted-foreground">{t("createContract.labelReviewDeadline")}</span>
                       <span className="text-foreground">{formatDate(deadline)}</span>
                     </div>
                   )}
                   <div className="border-t border-border pt-3">
-                    <p className="mb-2 text-sm font-medium text-muted-foreground">Milestones</p>
+                    <p className="mb-2 text-sm font-medium text-muted-foreground">{t("createContract.labelReviewMilestones")}</p>
                     {milestones.map((m, i) => (
-                    <div className="flex justify-between text-sm py-1">
+                    <div key={i} className="flex justify-between text-sm py-1">
                       <span className="text-foreground">{m.name}</span>
                       <span className="text-foreground">${getMilestoneAmount(m, netTotalNum).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
@@ -492,15 +473,15 @@ const CreateContract = () => {
                 </div>
                 <div className="border-t border-border pt-3 space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Milestones Total</span>
+                    <span className="text-muted-foreground">{t("createContract.reviewMilestonesTotal")}</span>
                     <span className="text-foreground">${totalMilestones.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Platform Fee (2%)</span>
+                    <span className="text-muted-foreground">{t("createContract.reviewPlatformFee")}</span>
                     <span className="text-foreground">${platformFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold pt-1 border-t border-border/50">
-                    <span className="text-foreground">Total amount to be deposited</span>
+                    <span className="text-foreground">{t("createContract.reviewTotalDeposit")}</span>
                     <span className="text-primary">${contractTotalNum.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                 </div>
@@ -508,10 +489,10 @@ const CreateContract = () => {
 
                 <div className="flex justify-between">
                   <Button variant="ghost" onClick={() => setStep(2)}>
-                    <ArrowLeft className="mr-1 h-4 w-4" /> Back
+                    <ArrowLeft className="mr-1 h-4 w-4" /> {t("common.back")}
                   </Button>
                   <Button variant="hero" onClick={handleSubmit} disabled={saving}>
-                    {saving ? "Sending..." : "Send Contract"}
+                    {saving ? t("common.sending") : t("createContract.sendBtn")}
                   </Button>
                 </div>
               </div>

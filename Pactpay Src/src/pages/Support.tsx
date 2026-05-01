@@ -10,10 +10,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { 
   MessageSquare, Send, Plus, Search, 
-  Clock, CheckCircle2, AlertCircle, ChevronRight,
-  LifeBuoy, ArrowLeft, MessageSquareText, Activity, X
+  Clock, CheckCircle2, AlertCircle, 
+  ArrowLeft, MessageSquareText, Activity, X
 } from "lucide-react";
 import { cn, formatTimeAgo } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface Message {
   id: string;
@@ -36,6 +37,7 @@ interface Ticket {
 const Support = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -50,7 +52,6 @@ const Support = () => {
     if (user) {
       fetchTickets();
 
-      // Listen for ticket updates (status changes, etc)
       const ticketChannel = supabase
         .channel('global-tickets')
         .on(
@@ -58,9 +59,8 @@ const Support = () => {
           { event: '*', schema: 'public', table: 'support_tickets' },
           (payload) => {
             if (payload.eventType === 'UPDATE') {
-              setTickets(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+              setTickets(prev => prev.map(t_item => t_item.id === payload.new.id ? { ...t_item, ...payload.new } : t_item));
               if (selectedTicket?.id === payload.new.id) {
-                // Also update the currently viewed ticket's status
                 setSelectedTicket(prev => prev ? { ...prev, ...payload.new } : null);
               }
             } else if (payload.eventType === 'INSERT') {
@@ -113,10 +113,9 @@ const Support = () => {
       .order("updated_at", { ascending: false });
 
     if (error) {
-      toast.error("Failed to load tickets");
+      toast.error(t("support.error.loadTickets"));
     } else {
       setTickets(data || []);
-      // Don't auto-select — let user choose
     }
     setLoading(false);
   };
@@ -129,7 +128,7 @@ const Support = () => {
       .order("created_at", { ascending: true });
 
     if (error) {
-      toast.error("Failed to load messages");
+      toast.error(t("support.error.loadMessages"));
     } else {
       setMessages(data || []);
     }
@@ -152,19 +151,17 @@ const Support = () => {
       });
 
     if (msgError) {
-      toast.error("Failed to send message");
+      toast.error(t("support.error.sendMessage"));
       setNewMessage(msg);
     } else {
-      // Update ticket updated_at and potentially status to 'open' if user replies
       await supabase
         .from("support_tickets")
         .update({ 
           updated_at: new Date().toISOString(),
-          status: 'open' // Re-open or mark as needing attention
+          status: 'open'
         })
         .eq("id", selectedTicket.id);
 
-      // Notify all admins
       const { data: admins } = await supabase
         .from("profiles")
         .select("id")
@@ -173,8 +170,8 @@ const Support = () => {
       if (admins && admins.length > 0) {
         const notifications = admins.map(admin => ({
           user_id: admin.id,
-          title: "New Support Message",
-          message: `Update on ticket: ${selectedTicket.subject}`,
+          title: t("support.notif.newMessageTitle"),
+          message: t("support.notif.newMessageMsg", { subject: selectedTicket.subject }),
           type: "system",
           link: "/admin"
         }));
@@ -193,10 +190,10 @@ const Support = () => {
       .eq("id", selectedTicket.id);
     
     if (error) {
-      toast.error("Failed to close ticket");
+      toast.error(t("support.error.closeTicket"));
     } else {
-      toast.success("Ticket closed");
-      setTickets(prev => prev.map(t => t.id === selectedTicket.id ? { ...t, status: 'closed' } : t));
+      toast.success(t("support.success.closed"));
+      setTickets(prev => prev.map(t_item => t_item.id === selectedTicket.id ? { ...t_item, status: 'closed' } : t_item));
       setSelectedTicket(prev => prev ? { ...prev, status: 'closed' } : null);
     }
   };
@@ -218,7 +215,7 @@ const Support = () => {
       .single();
 
     if (error) {
-      toast.error("Failed to create ticket");
+      toast.error(t("support.error.createTicket"));
       setLoading(false);
     } else {
       await supabase
@@ -230,7 +227,7 @@ const Support = () => {
           is_admin_reply: false
         });
 
-      toast.success("Ticket created successfully");
+      toast.success(t("support.success.created"));
       setIsNewTicketModalOpen(false);
       setNewTicketSubject("");
       setNewTicketMessage("");
@@ -263,26 +260,25 @@ const Support = () => {
               <ArrowLeft className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Support Center</h1>
-              <p className="text-sm text-muted-foreground">Get help with your contracts and account</p>
+              <h1 className="text-3xl font-bold tracking-tight">{t("support.title")}</h1>
+              <p className="text-sm text-muted-foreground">{t("support.subtitle")}</p>
             </div>
           </div>
           <Button 
             onClick={() => setIsNewTicketModalOpen(true)}
             className="gap-2 bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform"
           >
-            <Plus className="h-4 w-4" /> New Support Ticket
+            <Plus className="h-4 w-4" /> {t("support.newTicketBtn")}
           </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[700px]">
-          {/* Ticket Sidebar */}
           <div className="lg:col-span-4 glass-card overflow-hidden flex flex-col border-primary/10">
             <div className="p-4 border-b border-white/10 bg-muted/30">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Search tickets..." 
+                  placeholder={t("support.searchPlaceholder")} 
                   className="pl-9 bg-background/50 border-white/10"
                 />
               </div>
@@ -290,11 +286,11 @@ const Support = () => {
             
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {loading && tickets.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">Loading tickets...</div>
+                <div className="p-8 text-center text-muted-foreground">{t("common.loading")}</div>
               ) : tickets.length === 0 ? (
                 <div className="p-12 text-center flex flex-col items-center gap-4">
                   <MessageSquareText className="h-12 w-12 text-muted-foreground/20" />
-                  <p className="text-sm text-muted-foreground">No support tickets found</p>
+                  <p className="text-sm text-muted-foreground">{t("support.noTickets")}</p>
                 </div>
               ) : (
                 tickets.map((ticket) => (
@@ -311,7 +307,7 @@ const Support = () => {
                       {getStatusIcon(ticket.status)}
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground/60 uppercase font-bold tracking-wider">
-                      <span>{ticket.status}</span>
+                      <span>{t(`common.status.${ticket.status}`, { defaultValue: ticket.status })}</span>
                       <span>{formatTimeAgo(ticket.updated_at)}</span>
                     </div>
                   </div>
@@ -320,16 +316,14 @@ const Support = () => {
             </div>
           </div>
 
-          {/* Chat Area */}
           <div className="lg:col-span-8 glass-card overflow-hidden flex flex-col border-primary/10 relative">
             {!selectedTicket ? (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-50">
                 <MessageSquare className="h-16 w-16 mb-4 text-muted-foreground/20" />
-                <p className="text-muted-foreground">Select a ticket to view the conversation</p>
+                <p className="text-muted-foreground">{t("support.selectTicketMsg")}</p>
               </div>
             ) : (
               <>
-                {/* Chat Header */}
                 <div className="p-4 border-b border-white/10 bg-muted/20 flex items-center justify-between">
                   <div>
                     <h2 className="font-bold text-lg">{selectedTicket.subject}</h2>
@@ -342,9 +336,9 @@ const Support = () => {
                         selectedTicket.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500" :
                         "bg-muted text-muted-foreground"
                       )}>
-                        {selectedTicket.status.replace("_", " ")}
+                        {t(`common.status.${selectedTicket.status}`, { defaultValue: selectedTicket.status.replace("_", " ") })}
                       </span>
-                      <span>Ticket #{selectedTicket.id.slice(0, 8)}</span>
+                      <span>{t("support.ticketId")}: #{selectedTicket.id.slice(0, 8)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -355,20 +349,19 @@ const Support = () => {
                         className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                         onClick={handleCloseTicket}
                       >
-                        Close Ticket
+                        {t("support.closeTicketBtn")}
                       </Button>
                     )}
                     <button
                       onClick={() => setSelectedTicket(null)}
                       className="ml-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
-                      title="Back to ticket list"
+                      title={t("support.backToList")}
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-card/10">
                   {messages.map((msg) => (
                     <div 
@@ -387,18 +380,17 @@ const Support = () => {
                         {msg.message}
                       </div>
                       <span className="text-[10px] text-muted-foreground mt-1.5 font-medium px-1">
-                        {msg.is_admin_reply ? "Pactpay Support" : "You"} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {msg.is_admin_reply ? t("common.supportTeam") : t("common.you")} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                   ))}
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input Area */}
                 <form onSubmit={handleSendMessage} className="p-4 border-t border-white/10 bg-muted/20">
                   <div className="flex gap-3">
                     <Input 
-                      placeholder="Type your message..."
+                      placeholder={t("support.typeMessagePlaceholder")}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       disabled={selectedTicket.status === 'closed' || selectedTicket.status === 'resolved'}
@@ -419,19 +411,18 @@ const Support = () => {
         </div>
       </div>
 
-      {/* New Ticket Modal */}
       {isNewTicketModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="glass-card w-full max-w-xl p-8 border-primary/20 shadow-2xl animate-in zoom-in-95 duration-200">
-            <h2 className="text-2xl font-bold mb-2">Create Support Ticket</h2>
-            <p className="text-sm text-muted-foreground mb-6">Describe your issue and we'll get back to you as soon as possible.</p>
+            <h2 className="text-2xl font-bold mb-2">{t("support.modalTitle")}</h2>
+            <p className="text-sm text-muted-foreground mb-6">{t("support.modalSubtitle")}</p>
             
             <form onSubmit={handleCreateTicket} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="subject">Subject</Label>
+                <Label htmlFor="subject">{t("common.subject")}</Label>
                 <Input 
                   id="subject"
-                  placeholder="e.g., Payment issue with milestone"
+                  placeholder={t("support.subjectPlaceholder")}
                   value={newTicketSubject}
                   onChange={(e) => setNewTicketSubject(e.target.value)}
                   required
@@ -439,10 +430,10 @@ const Support = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="message">Message</Label>
+                <Label htmlFor="message">{t("common.message")}</Label>
                 <Textarea 
                   id="message"
-                  placeholder="Describe your issue in detail..."
+                  placeholder={t("support.messagePlaceholder")}
                   value={newTicketMessage}
                   onChange={(e) => setNewTicketMessage(e.target.value)}
                   className="min-h-[150px] bg-muted/30 border-white/10"
@@ -457,10 +448,10 @@ const Support = () => {
                   className="flex-1 h-12 border-white/10"
                   onClick={() => setIsNewTicketModalOpen(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button type="submit" disabled={loading} className="flex-1 h-12 bg-primary text-primary-foreground">
-                  {loading ? "Creating..." : "Submit Ticket"}
+                  {loading ? t("common.processing") : t("support.submitBtn")}
                 </Button>
               </div>
             </form>

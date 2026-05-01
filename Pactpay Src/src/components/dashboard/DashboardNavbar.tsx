@@ -5,24 +5,24 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { 
-  Bell, BellDot, Plus, LogOut, User as UserIcon, Sun, Moon,
-  Briefcase, DollarSign, ShieldCheck, AlertCircle, CheckCircle2, MessageSquareText
+  Bell, BellDot, LogOut, User as UserIcon, Sun, Moon,
+  Briefcase, DollarSign, AlertCircle, CheckCircle2, MessageSquareText
 } from "lucide-react";
 import PactpayLogo from "@/components/PactpayLogo";
 import { toast } from "sonner";
 import { cn, formatTimeAgo } from "@/lib/utils";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "react-i18next";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 const DashboardNavbar = () => {
   const { user, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -33,48 +33,26 @@ const DashboardNavbar = () => {
     if (user) {
       fetchProfile();
       fetchNotifications();
-      
-      // Optimized Real-time notification listener
+
       const channel = supabase
         .channel(`user-notifications-${user.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications'
-          },
-          (payload) => {
-            // Filter locally to ensure UUID matching works perfectly
-            if (payload.new.user_id === user.id) {
-              setNotifications(prev => [payload.new, ...prev].slice(0, 10));
-              setUnreadCount(prev => prev + 1);
-              
-              // Premium Toast Alert
-              toast.info(payload.new.title, {
-                description: payload.new.message,
-                icon: <Bell className="h-4 w-4" />
-              });
-            }
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+          if (payload.new.user_id === user.id) {
+            setNotifications(prev => [payload.new, ...prev].slice(0, 10));
+            setUnreadCount(prev => prev + 1);
+            toast.info(payload.new.title, { description: payload.new.message, icon: <Bell className="h-4 w-4" /> });
           }
-        )
+        })
         .subscribe((status) => {
           console.log(`📡 Notification channel status for ${user.email}:`, status);
         });
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
+      return () => { supabase.removeChannel(channel); };
     }
   }, [user]);
 
   const fetchProfile = async () => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("avatar_url")
-      .eq("id", user!.id)
-      .single();
-
+    const { data } = await supabase.from("profiles").select("avatar_url").eq("id", user!.id).single();
     if (data?.avatar_url) {
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.avatar_url);
       setAvatarUrl(urlData?.publicUrl || null);
@@ -82,67 +60,44 @@ const DashboardNavbar = () => {
   };
 
   const fetchNotifications = async () => {
-    // 1. Fetch latest 10 notifications for the dropdown
-    const { data: listData } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", user!.id)
-      .order("created_at", { ascending: false })
-      .limit(10);
+    const { data: listData } = await supabase.from("notifications").select("*")
+      .eq("user_id", user!.id).order("created_at", { ascending: false }).limit(10);
+    if (listData) setNotifications(listData);
 
-    if (listData) {
-      setNotifications(listData);
-    }
-
-    // 2. Fetch exact unread count for the badge
-    const { count, error } = await supabase
-      .from("notifications")
+    const { count, error } = await supabase.from("notifications")
       .select("*", { count: 'exact', head: true })
-      .eq("user_id", user!.id)
-      .or('is_read.eq.false,is_read.is.null');
-
-    if (!error) {
-      setUnreadCount(count || 0);
-    }
+      .eq("user_id", user!.id).or('is_read.eq.false,is_read.is.null');
+    if (!error) setUnreadCount(count || 0);
   };
 
   const markAsRead = async (id: string) => {
     const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    if (error) {
-      console.error("Error marking notification as read:", error);
-      return;
-    }
+    if (error) { console.error("Error marking notification as read:", error); return; }
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
   };
 
   const markAllAsRead = async () => {
     if (unreadCount === 0) return;
-    const { error } = await supabase.from("notifications").update({ is_read: true }).eq("user_id", user!.id).eq("is_read", false);
-    if (error) {
-      toast.error("Failed to mark all as read");
-      return;
-    }
+    const { error } = await supabase.from("notifications").update({ is_read: true })
+      .eq("user_id", user!.id).eq("is_read", false);
+    if (error) { toast.error(t("nav.markAllReadError")); return; }
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
-    toast.success("All notifications marked as read");
+    toast.success(t("nav.allMarkedRead"));
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
-  };
+  const handleSignOut = async () => { await signOut(); navigate("/"); };
 
   const initial = user?.user_metadata?.full_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "U";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-primary/15 bg-white/80 dark:bg-background/80 backdrop-blur-xl transition-all">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link to="/dashboard">
-          <PactpayLogo size="md" />
-        </Link>
+        <Link to="/dashboard"><PactpayLogo size="md" /></Link>
 
         <div className="flex items-center gap-3">
+          {/* Notifications */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full bg-card/50 ring-1 ring-border/50 transition-all hover:bg-card hover:ring-primary/30">
@@ -160,16 +115,11 @@ const DashboardNavbar = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80 p-0 overflow-hidden bg-card/95 backdrop-blur-xl border-primary/20 shadow-2xl">
               <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notifications</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("nav.notifications")}</span>
                 {unreadCount > 0 && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markAllAsRead();
-                    }}
-                    className="text-[10px] font-bold text-primary hover:text-primary-hover transition-colors"
-                  >
-                    Mark all as read
+                  <button onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+                    className="text-[10px] font-bold text-primary hover:text-primary-hover transition-colors">
+                    {t("nav.markAllRead")}
                   </button>
                 )}
               </div>
@@ -180,33 +130,22 @@ const DashboardNavbar = () => {
                     <div className="mx-auto h-12 w-12 rounded-full bg-muted/30 flex items-center justify-center">
                       <Bell className="h-6 w-6 text-muted-foreground/30" />
                     </div>
-                    <p className="text-xs text-muted-foreground font-medium">No notifications yet</p>
+                    <p className="text-xs text-muted-foreground font-medium">{t("nav.noNotifications")}</p>
                   </div>
                 ) : (
                   notifications.map((n) => {
                     const [displayMessage, smartLink] = (n.message || "").split("|||");
                     const fallbackTitle = n.type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                    
                     return (
-                      <DropdownMenuItem
-                        key={n.id}
-                        className={cn(
-                          "flex items-start gap-3 p-4 cursor-pointer transition-all border-b border-border/10 last:border-0 outline-none",
-                          !n.is_read ? "bg-primary/[0.03] hover:bg-primary/[0.06] focus:bg-primary/[0.06]" : "hover:bg-muted/30 focus:bg-muted/30"
-                        )}
-                        onClick={() => {
-                          markAsRead(n.id);
-                          const targetLink = smartLink || n.link;
-                          if (targetLink) navigate(targetLink);
-                        }}
-                      >
-                        <div className={cn(
-                          "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-all",
+                      <DropdownMenuItem key={n.id}
+                        className={cn("flex items-start gap-3 p-4 cursor-pointer transition-all border-b border-border/10 last:border-0 outline-none",
+                          !n.is_read ? "bg-primary/[0.03] hover:bg-primary/[0.06] focus:bg-primary/[0.06]" : "hover:bg-muted/30 focus:bg-muted/30")}
+                        onClick={() => { markAsRead(n.id); const targetLink = smartLink || n.link; if (targetLink) navigate(targetLink); }}>
+                        <div className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-all",
                           n.type === 'invite' ? "bg-blue-500/10 ring-blue-500/20 text-blue-500" :
                           n.type === 'payment' ? "bg-emerald-500/10 ring-emerald-500/20 text-emerald-500" :
                           n.type === 'dispute' ? "bg-destructive/10 ring-destructive/20 text-destructive" :
-                          "bg-primary/10 ring-primary/20 text-primary"
-                        )}>
+                          "bg-primary/10 ring-primary/20 text-primary")}>
                           {n.type === 'invite' ? <Briefcase className="h-[1.1rem] w-[1.1rem]" /> :
                            n.type === 'payment' ? <DollarSign className="h-[1.1rem] w-[1.1rem]" /> :
                            n.type === 'dispute' ? <AlertCircle className="h-[1.1rem] w-[1.1rem]" /> :
@@ -219,12 +158,8 @@ const DashboardNavbar = () => {
                             </span>
                             {!n.is_read && <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />}
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                            {displayMessage}
-                          </p>
-                          <span className="text-[10px] font-medium text-muted-foreground/40 mt-1 flex items-center gap-1">
-                            {formatTimeAgo(n.created_at)}
-                          </span>
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{displayMessage}</p>
+                          <span className="text-[10px] font-medium text-muted-foreground/40 mt-1 flex items-center gap-1">{formatTimeAgo(n.created_at)}</span>
                         </div>
                       </DropdownMenuItem>
                     );
@@ -234,38 +169,31 @@ const DashboardNavbar = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            className="h-9 w-9 rounded-full bg-card/50 ring-1 ring-border/50 transition-all hover:bg-card hover:ring-primary/30"
-          >
-            {isDark ? (
-              <Sun className="h-[1.1rem] w-[1.1rem] text-amber-500" />
-            ) : (
-              <Moon className="h-[1.1rem] w-[1.1rem] text-primary" />
-            )}
+          {/* Language Switcher */}
+          <LanguageSwitcher compact saveToProfile />
+
+          {/* Theme Toggle */}
+          <Button variant="ghost" size="icon" onClick={toggleTheme}
+            className="h-9 w-9 rounded-full bg-card/50 ring-1 ring-border/50 transition-all hover:bg-card hover:ring-primary/30">
+            {isDark ? <Sun className="h-[1.1rem] w-[1.1rem] text-amber-500" /> : <Moon className="h-[1.1rem] w-[1.1rem] text-primary" />}
           </Button>
 
+          {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground overflow-hidden ring-2 ring-primary/20 hover:ring-primary/40 transition-all">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
-                ) : (
-                  initial
-                )}
+                {avatarUrl ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" /> : initial}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={() => navigate("/profile")}>
-                <UserIcon className="mr-2 h-4 w-4" /> Profile
+                <UserIcon className="mr-2 h-4 w-4" /> {t("nav.profile")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate("/support")}>
-                <MessageSquareText className="mr-2 h-4 w-4" /> Help & Support
+                <MessageSquareText className="mr-2 h-4 w-4" /> {t("nav.helpSupport")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="mr-2 h-4 w-4" /> Sign out
+                <LogOut className="mr-2 h-4 w-4" /> {t("nav.signOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

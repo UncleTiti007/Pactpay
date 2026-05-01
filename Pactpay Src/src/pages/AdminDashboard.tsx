@@ -12,10 +12,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import {
-  Users, LayoutDashboard, Settings, FileText, Activity, AlertTriangle,
-  Search, ShieldAlert, LogOut, CheckCircle2, CheckCircle, XCircle, MoreVertical,
-  Trash2, ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock, Unlock,
-  DollarSign, TrendingUp, LifeBuoy, Send, MessageSquare, MessageSquareText, Bell
+  Users, AlertTriangle,
+  Search, ShieldAlert, CheckCircle2, CheckCircle, XCircle, MoreVertical,
+  ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock,
+  DollarSign, TrendingUp, Send, MessageSquareText, Bell, FileText
 } from "lucide-react";
 import {
   Select,
@@ -32,11 +32,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SUPABASE_ANON_KEY } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState(false);
@@ -86,9 +87,8 @@ export default function AdminDashboard() {
       if (!user) navigate("/auth");
       else checkAdmin();
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, navigate]);
 
-  // Admin Notification Listener
   useEffect(() => {
     if (isAdmin && user) {
       fetchNotifications();
@@ -103,7 +103,6 @@ export default function AdminDashboard() {
         }, (payload) => {
           setNotifications(prev => [payload.new, ...prev].slice(0, 5));
           setUnreadCount(prev => prev + 1);
-          // Optional: Re-fetch full list or just push the new one
         })
         .subscribe();
 
@@ -137,7 +136,7 @@ export default function AdminDashboard() {
       const isUserAdmin = profile?.is_admin || user?.user_metadata?.role === 'admin' || user?.email === 'admin@pactpay.com';
 
       if (!isUserAdmin) {
-        toast.error("Unauthorized: Admin access only");
+        toast.error(t("admin.error.unauthorized"));
         navigate("/dashboard");
         return;
       }
@@ -146,7 +145,7 @@ export default function AdminDashboard() {
       fetchAllData();
     } catch (err: any) {
       console.error("Admin check failed:", err);
-      toast.error("Failed to verify admin status: " + err.message);
+      toast.error(t("admin.error.verifyFailed") + ": " + err.message);
       navigate("/dashboard");
     }
   };
@@ -179,18 +178,17 @@ export default function AdminDashboard() {
 
     } catch (err: any) {
       console.error("Failed to fetch admin data:", err);
-      toast.error("Data fetch failed: " + err.message);
+      toast.error(t("admin.error.fetchFailed") + ": " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Derived Stats for Command Center
   const stats = {
     pendingKYCs: users.filter(u => !u.kyc_verified && u.id_doc_front_url).length,
     openDisputes: disputes.filter(d => d.status === 'open').length,
-    pendingWithdrawals: transactions.filter(t => t.type === 'withdrawal' && t.metadata?.status === 'pending').length,
-    unreadTickets: tickets.filter(t => t.status === 'open').length,
+    pendingWithdrawals: transactions.filter(tr => tr.type === 'withdrawal' && tr.metadata?.status === 'pending').length,
+    unreadTickets: tickets.filter(ti => ti.status === 'open').length,
   };
 
   const fetchAdminMessages = async (ticketId: string) => {
@@ -211,7 +209,6 @@ export default function AdminDashboard() {
     setDisputeMessages(data || []);
   };
 
-  // Global Realtime listener for tickets
   useEffect(() => {
     if (isAdmin) {
       const ticketChannel = supabase
@@ -220,7 +217,7 @@ export default function AdminDashboard() {
           event: '*',
           schema: 'public',
           table: 'support_tickets'
-        }, (payload) => {
+        }, () => {
           fetchAllData();
         })
         .subscribe();
@@ -293,17 +290,15 @@ export default function AdminDashboard() {
       is_admin_reply: true
     });
 
-    // Update ticket status
     await supabase.from("support_tickets").update({
       status: 'pending user',
       updated_at: new Date().toISOString()
     }).eq("id", selectedAdminTicket.id);
 
-    // Also send a system notification to the user
     await supabase.from("notifications").insert({
       user_id: selectedAdminTicket.user_id,
-      title: "Support Update",
-      message: "You have a new reply from Pactpay Support",
+      title: t("admin.notif.supportReplyTitle"),
+      message: t("admin.notif.supportReplyMsg"),
       type: "system",
       link: "/support"
     });
@@ -316,7 +311,6 @@ export default function AdminDashboard() {
     const msg = newDisputeReply;
     setNewDisputeReply("");
 
-    // Optimistic Update
     const optimisticMsg = {
       id: 'temp-' + Date.now(),
       dispute_id: selectedAdminDispute.id,
@@ -324,7 +318,7 @@ export default function AdminDashboard() {
       message: msg,
       is_admin_reply: true,
       created_at: new Date().toISOString(),
-      profiles: { full_name: 'Pactpay Admin' }
+      profiles: { full_name: t("common.admin") }
     };
     setDisputeMessages(prev => [...prev, optimisticMsg]);
 
@@ -336,34 +330,27 @@ export default function AdminDashboard() {
     });
 
     if (error) {
-      toast.error("Failed to send reply: " + error.message);
-      setDisputeMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      toast.error(t("admin.error.sendReply") + ": " + error.message);
+      setDisputeMessages(prev => prev.filter(m_item => m_item.id !== optimisticMsg.id));
     } else {
-      // Re-fetch to get real data
       fetchDisputeMessages(selectedAdminDispute.id);
     }
 
-    // Notify both parties
-    const contract = contracts.find(c => c.id === selectedAdminDispute.contract_id);
+    const contract = contracts.find(c_item => c_item.id === selectedAdminDispute.contract_id);
     if (contract) {
       const parties = [contract.client_id, contract.freelancer_id].filter(Boolean);
-      const notifications = parties.map(pid => ({
+      const notifications_list = parties.map(pid => ({
         user_id: pid,
-        title: "Dispute Update",
-        message: "The Pactpay Admin has posted a message in the Dispute Resolution Center.",
+        title: t("admin.notif.disputeUpdateTitle"),
+        message: t("admin.notif.disputeUpdateMsg"),
         type: "system",
         link: `/contracts/${contract.id}`
       }));
       
-      const { error: nError } = await supabase.from("notifications").insert(notifications);
+      const { error: nError } = await supabase.from("notifications").insert(notifications_list);
       if (nError) {
-        console.error("❌ Notification Insert Error:", nError);
-        toast.error("Message sent, but failed to notify parties: " + nError.message);
-      } else {
-        console.log("✅ Parties notified successfully:", parties);
+        toast.error(t("admin.error.notifyParties") + ": " + nError.message);
       }
-    } else {
-      console.warn("⚠️ Could not find contract for notification:", selectedAdminDispute.contract_id);
     }
   };
 
@@ -372,16 +359,14 @@ export default function AdminDashboard() {
     setResolving(true);
     
     try {
-      // 1. Fetch fresh data for the resolution
       const { data: dispute } = await supabase.from("disputes").select("*").eq("id", disputeId).single();
-      if (!dispute || dispute.status === "resolved") throw new Error("Dispute already resolved or not found.");
+      if (!dispute || dispute.status === "resolved") throw new Error(t("admin.error.disputeResolved"));
 
       const { data: ms } = await supabase.from("milestones").select("*").eq("id", dispute.milestone_id).single();
       const { data: contract } = await supabase.from("contracts").select("*").eq("id", dispute.contract_id).single();
       
-      if (!ms || !contract) throw new Error("Related contract or milestone data is missing.");
+      if (!ms || !contract) throw new Error(t("admin.error.relatedDataMissing"));
 
-      // 2. Perform the financial resolution
       if (resolution === "release") {
         const { error: msError } = await supabase
           .from("milestones")
@@ -389,7 +374,6 @@ export default function AdminDashboard() {
           .eq("id", ms.id);
         if (msError) throw msError;
       } else {
-        // Refund logic
         const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.client_id).single();
         const { error: walletErr } = await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.client_id);
         if (walletErr) throw walletErr;
@@ -404,7 +388,6 @@ export default function AdminDashboard() {
         await supabase.from("milestones").update({ status: "cancelled" }).eq("id", ms.id);
       }
 
-      // 3. IMMEDIATELY mark the dispute as resolved in the DB
       const { error: disputeErr } = await supabase
         .from("disputes")
         .update({ 
@@ -414,18 +397,14 @@ export default function AdminDashboard() {
       
       if (disputeErr) throw disputeErr;
 
-      // 4. Secondary Updates (Notifications & Contract Status)
-      // These are important but shouldn't block the UI if they hit a snag
       try {
-        // Update contract status
         const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract.id);
-        const allDone = allMs?.every((m: any) => m.status === "completed" || m.status === "cancelled");
+        const allDone = allMs?.every((m_item: any) => m_item.status === "completed" || m_item.status === "cancelled");
         await supabase.from("contracts").update({ status: allDone ? "completed" : "active" }).eq("id", contract.id);
 
-        // Notify parties
         const participants = [
-          { id: contract.freelancer_id, title: "Dispute Resolved", msg: `Dispute resolved for "${ms.title || ms.name}". Funds ${resolution === 'release' ? 'released to you' : 'refunded to client'}.` },
-          { id: contract.client_id, title: "Dispute Resolved", msg: `The dispute for "${ms.title || ms.name}" has been resolved via ${resolution}.` }
+          { id: contract.freelancer_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedFreelancer", { title: ms.title || ms.name, resolution: resolution === 'release' ? t("admin.resolution.released") : t("admin.resolution.refunded") }) },
+          { id: contract.client_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedClient", { title: ms.title || ms.name, resolution: resolution }) }
         ];
 
         for (const p of participants) {
@@ -443,20 +422,18 @@ export default function AdminDashboard() {
         console.error("Secondary resolution updates failed:", secondaryErr);
       }
 
-      // 5. Finalize UI
-      toast.success(`Dispute resolved successfully via ${resolution}.`);
+      toast.success(t("admin.success.disputeResolved", { resolution }));
       setSelectedAdminDispute(null);
       fetchAllData();
 
     } catch (err: any) {
       console.error("Dispute resolution failed:", err);
-      toast.error(`Resolution failed: ${err.message}`);
+      toast.error(t("admin.error.resolutionFailed") + ": " + err.message);
     } finally {
       setResolving(false);
     }
   };
 
-  // Open KYC review modal and generate signed URLs
   const openKycModal = async (u: any) => {
     setKycUser(u);
     setKycUrls({ front: null, back: null, selfie: null });
@@ -481,65 +458,62 @@ export default function AdminDashboard() {
     if (!kycUser) return;
     setKycAction(true);
     const { error } = await supabase.from("profiles").update({ kyc_verified: true }).eq("id", kycUser.id);
-    if (error) toast.error("Failed to approve: " + error.message);
-    else { toast.success(`✅ KYC approved for ${kycUser.full_name || kycUser.id}`); fetchAllData(); setKycUser(null); }
+    if (error) toast.error(t("admin.error.approveKYC") + ": " + error.message);
+    else { toast.success(t("admin.success.kycApproved", { name: kycUser.full_name || kycUser.id })); fetchAllData(); setKycUser(null); }
     setKycAction(false);
   };
 
-  const handleApproveWithdrawal = async (t: any) => {
+  const handleApproveWithdrawal = async (tx_item: any) => {
     try {
-      const updatedMetadata = { ...t.metadata, status: 'completed' };
-      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
+      const updatedMetadata = { ...tx_item.metadata, status: 'completed' };
+      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', tx_item.id);
       if (error) throw error;
 
-      // Create notification for user
       await supabase.from('notifications').insert({
-        user_id: t.from_user_id,
+        user_id: tx_item.from_user_id,
         type: 'withdrawal_approved',
-        message: `Withdrawal Approved: Your withdrawal for $${t.amount.toLocaleString()} has been processed.`
+        message: t("admin.notif.withdrawalApprovedMsg", { amount: tx_item.amount.toLocaleString() })
       });
 
-      toast.success("Withdrawal approved and marked as completed");
+      toast.success(t("admin.success.withdrawalApproved"));
       fetchAllData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to approve withdrawal");
+      toast.error(err.message || t("admin.error.approveWithdrawal"));
     }
   };
 
-  const handleRejectWithdrawal = async (t: any) => {
+  const handleRejectWithdrawal = async (tx_item: any) => {
     try {
-      const updatedMetadata = { ...t.metadata, status: 'failed', rejection_reason: 'Admin rejected' };
+      const updatedMetadata = { ...tx_item.metadata, status: 'failed', rejection_reason: 'Admin rejected' };
 
-      // Refund logic - restore user's wallet balance
-      const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', t.from_user_id).single();
+      const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', tx_item.from_user_id).single();
       if (profile) {
-        await supabase.from('profiles').update({ wallet_balance: (profile.wallet_balance || 0) + t.amount }).eq('id', t.from_user_id);
+        await supabase.from('profiles').update({ wallet_balance: (profile.wallet_balance || 0) + tx_item.amount }).eq('id', tx_item.from_user_id);
       }
 
-      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', t.id);
+      const { error } = await supabase.from('transactions').update({ metadata: updatedMetadata }).eq('id', tx_item.id);
       if (error) throw error;
 
-      // Create notification for user
       await supabase.from('notifications').insert({
-        user_id: t.from_user_id,
+        user_id: tx_item.from_user_id,
         type: 'withdrawal_rejected',
-        message: `Withdrawal Rejected: Your withdrawal of $${t.amount.toLocaleString()} was not approved. Funds returned to wallet.`
+        message: t("admin.notif.withdrawalRejectedMsg", { amount: tx_item.amount.toLocaleString() })
       });
 
-      toast.success("Withdrawal rejected and funds refunded to user");
+      toast.success(t("admin.success.withdrawalRejected"));
       fetchAllData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to reject withdrawal");
+      toast.error(err.message || t("admin.error.rejectWithdrawal"));
     }
   };
 
   const handleReject = async () => {
     if (!kycUser) return;
-    if (!rejectReason.trim()) { toast.error("Please enter a rejection reason."); return; }
+    if (!rejectReason.trim()) { toast.error(t("admin.error.rejectionReasonRequired")); return; }
     setKycAction(true);
     const { error } = await supabase.from("profiles").update({ kyc_verified: false }).eq("id", kycUser.id);
-    if (error) toast.error("Failed to reject: " + error.message);
-    else { toast.success(`❌ KYC rejected for ${kycUser.full_name || kycUser.id}`); fetchAllData(); setKycUser(null); }
+    if (error) toast.error(t("admin.error.rejectKYC") + ": " + error.message);
+    else { toast.success(t("admin.success.kycRejected", { name: kycUser.full_name || kycUser.id })); fetchAllData(); setKycUser(null); }
     setKycAction(false);
   };
 
@@ -553,10 +527,10 @@ export default function AdminDashboard() {
 
       if (error) throw error;
 
-      toast.success(`User account ${newStatus} successfully!`);
+      toast.success(t("admin.success.userStatusUpdated", { status: newStatus }));
       fetchAllData();
     } catch (err: any) {
-      toast.error("Failed to update status: " + err.message);
+      toast.error(t("admin.error.updateStatus") + ": " + err.message);
     } finally {
       setUpdatingStatus(false);
     }
@@ -568,7 +542,7 @@ export default function AdminDashboard() {
       {url ? (
         url.includes(".pdf") ? (
           <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg border border-border p-3 hover:bg-muted transition-colors text-sm text-primary">
-            <FileText className="h-4 w-4" /> View PDF
+            <FileText className="h-4 w-4" /> {t("admin.kyc.viewPDF")}
           </a>
         ) : (
           <a href={url} target="_blank" rel="noreferrer" className="block cursor-pointer group hover:opacity-80 transition-opacity">
@@ -581,40 +555,38 @@ export default function AdminDashboard() {
         )
       ) : (
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-          <ImageIcon className="h-4 w-4" /> Not uploaded
+          <ImageIcon className="h-4 w-4" /> {t("admin.kyc.notUploaded")}
         </div>
       )}
     </div>
   );
 
   if (loading || authLoading || !isAdmin) {
-    return <div className="flex min-h-screen items-center justify-center bg-background">Loading Admin...</div>;
+    return <div className="flex min-h-screen items-center justify-center bg-background">{t("admin.loading")}</div>;
   }
 
-  const totalRevenue = transactions.filter(t => t.type === "fee").reduce((sum, t) => sum + t.amount, 0);
-  const totalPayouts = transactions.filter(t => t.type === "revenue_payout").reduce((sum, t) => sum + t.amount, 0);
+  const totalRevenue = transactions.filter(tr => tr.type === "fee").reduce((sum, tr) => sum + tr.amount, 0);
+  const totalPayouts = transactions.filter(tr => tr.type === "revenue_payout").reduce((sum, tr) => sum + tr.amount, 0);
   const netEarnings = totalRevenue - totalPayouts;
 
-  // Calculate Active Escrow: Total Escrow In - (Released + Refunded)
-  const totalEscrowIn = transactions.filter(t => t.type === "escrow").reduce((sum, t) => sum + t.amount, 0);
-  const totalEscrowOut = transactions.filter(t => t.type === "release" || t.type === "refund").reduce((sum, t) => sum + t.amount, 0);
+  const totalEscrowIn = transactions.filter(tr => tr.type === "escrow").reduce((sum, tr) => sum + tr.amount, 0);
+  const totalEscrowOut = transactions.filter(tr => tr.type === "release" || tr.type === "refund").reduce((sum, tr) => sum + tr.amount, 0);
   const activeEscrow = totalEscrowIn - totalEscrowOut;
 
-  // Calculate Total System Liquidity (All Wallet Balances)
-  const totalLiquidity = users.reduce((sum, u) => sum + (u.wallet_balance || 0), 0);
+  const totalLiquidity = users.reduce((sum, u_item) => sum + (u_item.wallet_balance || 0), 0);
 
   const handleFeePayout = async () => {
-    const amountStr = prompt(`Enter amount to withdraw from platform fees (Available: $${netEarnings.toLocaleString()}):`);
+    const amountStr = prompt(t("admin.prompt.feePayout", { amount: netEarnings.toLocaleString() }));
     if (!amountStr) return;
 
     const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0) {
-      toast.error("Invalid amount");
+      toast.error(t("admin.error.invalidAmount"));
       return;
     }
 
     if (amount > netEarnings) {
-      toast.error("Amount exceeds available earnings");
+      toast.error(t("admin.error.insufficientEarnings"));
       return;
     }
 
@@ -628,10 +600,10 @@ export default function AdminDashboard() {
       if (error) throw error;
       if (data?.success === false) throw new Error(data.message);
 
-      toast.success(`Successfully withdrew $${amount.toLocaleString()} from platform fees`);
+      toast.success(t("admin.success.withdrawn", { amount: amount.toLocaleString() }));
       fetchAllData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to process payout");
+      toast.error(err.message || t("admin.error.processPayout"));
     }
   };
 
@@ -642,12 +614,11 @@ export default function AdminDashboard() {
         <div className="mb-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Admin Control Panel</h1>
-              <p className="text-muted-foreground mt-1">Platform overview and high-level system management</p>
+              <h1 className="text-3xl font-bold text-foreground">{t("admin.title")}</h1>
+              <p className="text-muted-foreground mt-1">{t("admin.subtitle")}</p>
             </div>
             
             <div className="flex items-center gap-4">
-              {/* Admin Notification Bell */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative hover:bg-primary/10 transition-colors h-11 w-11 rounded-full border border-border/50">
@@ -661,10 +632,10 @@ export default function AdminDashboard() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-80 p-0 overflow-hidden bg-card/95 backdrop-blur-xl border-primary/20 shadow-2xl">
                   <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Admin Alerts</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("admin.alerts.title")}</span>
                     {unreadCount > 0 && (
                       <button onClick={markAllAsRead} className="text-[10px] font-bold text-primary hover:underline">
-                        Clear all
+                        {t("admin.alerts.clearAll")}
                       </button>
                     )}
                   </div>
@@ -675,31 +646,30 @@ export default function AdminDashboard() {
                         <div className="mx-auto h-12 w-12 rounded-full bg-muted/30 flex items-center justify-center">
                           <Bell className="h-6 w-6 text-muted-foreground/30" />
                         </div>
-                        <p className="text-xs text-muted-foreground font-medium">No new alerts</p>
+                        <p className="text-xs text-muted-foreground font-medium">{t("admin.alerts.noNew")}</p>
                       </div>
                     ) : (
-                      notifications.map((n) => (
+                      notifications.map((n_item) => (
                         <DropdownMenuItem 
-                          key={n.id} 
+                          key={n_item.id} 
                           className="flex flex-col items-start p-4 gap-1 cursor-pointer border-b last:border-0 hover:bg-muted/30 focus:bg-muted/30 outline-none"
                           onSelect={() => {
-                            if (n.link) {
-                              if (n.link === "/admin") {
-                                // Already here, maybe just switch tab?
-                                if (n.type === "dispute") setActiveTab("disputes");
-                                else if (n.type === "support") setActiveTab("support");
+                            if (n_item.link) {
+                              if (n_item.link === "/admin") {
+                                if (n_item.type === "dispute") setActiveTab("disputes");
+                                else if (n_item.type === "support") setActiveTab("support");
                               } else {
-                                navigate(n.link);
+                                navigate(n_item.link);
                               }
                             }
                           }}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">{n.type}</span>
-                            <span className="text-[10px] text-muted-foreground italic">just now</span>
+                            <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">{n_item.type}</span>
+                            <span className="text-[10px] text-muted-foreground italic">{t("common.justNow")}</span>
                           </div>
-                          <span className="text-xs font-bold text-foreground line-clamp-1">{n.title || 'System Alert'}</span>
-                          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{n.message}</p>
+                          <span className="text-xs font-bold text-foreground line-clamp-1">{n_item.title || t("admin.alerts.systemAlert")}</span>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">{n_item.message}</p>
                         </DropdownMenuItem>
                       ))
                     )}
@@ -713,12 +683,11 @@ export default function AdminDashboard() {
                 className="gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 h-11"
                 disabled={netEarnings <= 0}
               >
-                <TrendingUp className="h-4 w-4" /> Withdraw Platform Fees
+                <TrendingUp className="h-4 w-4" /> {t("admin.withdrawFeesBtn")}
               </Button>
             </div>
           </div>
 
-          {/* ACTION REQUIRED: Admin Command Center */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div 
               className={cn(
@@ -732,7 +701,7 @@ export default function AdminDashboard() {
                   <AlertTriangle className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Open Disputes</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.openDisputes")}</p>
                   <p className="text-xl font-bold">{stats.openDisputes}</p>
                 </div>
               </div>
@@ -750,7 +719,7 @@ export default function AdminDashboard() {
                   <ShieldAlert className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">KYC Pending</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.kycPending")}</p>
                   <p className="text-xl font-bold">{stats.pendingKYCs}</p>
                 </div>
               </div>
@@ -768,7 +737,7 @@ export default function AdminDashboard() {
                   <ArrowRightLeft className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Pending Payouts</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.pendingPayouts")}</p>
                   <p className="text-xl font-bold">{stats.pendingWithdrawals}</p>
                 </div>
               </div>
@@ -786,57 +755,56 @@ export default function AdminDashboard() {
                   <MessageSquareText className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Support Needed</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.supportNeeded")}</p>
                   <p className="text-xl font-bold">{stats.unreadTickets}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* NEW Stats Overview Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="glass-card p-5 border-primary/20 bg-primary/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
-                <DollarSign className="h-3 w-3" /> Total Platform Liquidity
+                <DollarSign className="h-3 w-3" /> {t("admin.stats.totalLiquidity")}
               </span>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-foreground">${totalLiquidity.toLocaleString()}</span>
                 <span className="text-[10px] text-muted-foreground">USD</span>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Combined user wallet balances</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{t("admin.stats.totalLiquidityDesc")}</p>
             </div>
 
             <div className="glass-card p-5 border-warning/20 bg-warning/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
-                <ShieldCheck className="h-3 w-3" /> Active Escrow Locked
+                <ShieldCheck className="h-3 w-3" /> {t("admin.stats.activeEscrow")}
               </span>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-warning">${activeEscrow.toLocaleString()}</span>
                 <span className="text-[10px] text-muted-foreground">USD</span>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Total funds in active contracts</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{t("admin.stats.activeEscrowDesc")}</p>
             </div>
 
             <div className="glass-card p-5 border-success/20 bg-success/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
-                <TrendingUp className="h-3 w-3" /> Net Platform Earnings
+                <TrendingUp className="h-3 w-3" /> {t("admin.stats.netEarnings")}
               </span>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-success">${netEarnings.toLocaleString()}</span>
-                <span className="text-[10px] text-muted-foreground">Available</span>
+                <span className="text-[10px] text-muted-foreground">{t("common.available")}</span>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Total fees collected (payouts deducted)</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{t("admin.stats.netEarningsDesc")}</p>
             </div>
 
             <div className="glass-card p-5 border-status-active/20 bg-status-active/5 flex flex-col justify-between">
               <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-2">
-                <Users className="h-3 w-3" /> Total Active Users
+                <Users className="h-3 w-3" /> {t("admin.stats.totalUsers")}
               </span>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-status-active">{users.length.toLocaleString()}</span>
-                <span className="text-[10px] text-muted-foreground">Active</span>
+                <span className="text-[10px] text-muted-foreground">{t("common.status.active")}</span>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Verified and pending users</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{t("admin.stats.totalUsersDesc")}</p>
             </div>
           </div>
         </div>
@@ -844,26 +812,25 @@ export default function AdminDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="horizontal-scroll-indicator">
             <TabsList className="bg-card glass-card inline-flex w-auto min-w-full">
-              <TabsTrigger value="disputes">Active Disputes ({disputes.filter(d => d.status === 'open').length})</TabsTrigger>
-              <TabsTrigger value="contracts">Contracts ({contracts.length})</TabsTrigger>
-              <TabsTrigger value="users">Users ({users.length})</TabsTrigger>
-              <TabsTrigger value="transactions">Transactions ({transactions.length})</TabsTrigger>
-              <TabsTrigger value="support">Support ({tickets.length})</TabsTrigger>
+              <TabsTrigger value="disputes">{t("admin.tabs.disputes")} ({disputes.filter(d => d.status === 'open').length})</TabsTrigger>
+              <TabsTrigger value="contracts">{t("admin.tabs.contracts")} ({contracts.length})</TabsTrigger>
+              <TabsTrigger value="users">{t("admin.tabs.users")} ({users.length})</TabsTrigger>
+              <TabsTrigger value="transactions">{t("admin.tabs.transactions")} ({transactions.length})</TabsTrigger>
+              <TabsTrigger value="support">{t("admin.tabs.support")} ({tickets.length})</TabsTrigger>
             </TabsList>
           </div>
 
           <TabsContent value="disputes" className="glass-card p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
-              {/* Disputes List */}
               <div className="lg:col-span-4 border-r border-border/50 pr-4 flex flex-col">
                 <div className="mb-4">
-                  <h2 className="text-xl font-semibold mb-1">Dispute Resolution</h2>
-                  <p className="text-xs text-muted-foreground mb-3">Manage and resolve contract conflicts</p>
+                  <h2 className="text-xl font-semibold mb-1">{t("admin.disputes.title")}</h2>
+                  <p className="text-xs text-muted-foreground mb-3">{t("admin.disputes.subtitle")}</p>
 
                   <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
-                      placeholder="Search by contract or reason..."
+                      placeholder={t("admin.disputes.searchPlaceholder")}
                       className="pl-9 h-8 text-xs bg-muted/20"
                       value={disputeSearch}
                       onChange={(e) => setDisputeSearch(e.target.value)}
@@ -871,68 +838,68 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 mb-2">
-                    {["all", "open", "resolved"].map((s) => (
+                    {["all", "open", "resolved"].map((s_item) => (
                       <button
-                        key={s}
-                        onClick={() => setDisputeFilter(s)}
+                        key={s_item}
+                        onClick={() => setDisputeFilter(s_item)}
                         className={cn(
                           "px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all capitalize",
-                          disputeFilter === s
+                          disputeFilter === s_item
                             ? "bg-primary/20 text-primary border-primary/50"
                             : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground/50"
                         )}
                       >
-                        {s}
+                        {t(`common.status.${s_item}`, { defaultValue: s_item })}
                       </button>
                     ))}
                   </div>
                 </div>
                 
                 <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
-                  {disputes.filter(d => {
-                    const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
-                    const matchesStatus = disputeFilter === 'all' || d.status === disputeFilter;
+                  {disputes.filter(d_item => {
+                    const contractTitle = contracts.find(c_item => c_item.id === d_item.contract_id)?.title || "";
+                    const matchesStatus = disputeFilter === 'all' || d_item.status === disputeFilter;
                     const searchLower = disputeSearch.toLowerCase();
                     const matchesSearch =
                       contractTitle.toLowerCase().includes(searchLower) ||
-                      (d.reason || "").toLowerCase().includes(searchLower);
+                      (d_item.reason || "").toLowerCase().includes(searchLower);
                     return matchesStatus && matchesSearch;
                   }).length === 0 ? (
                     <div className="py-20 text-center text-muted-foreground italic text-sm">
-                      No disputes found
+                      {t("admin.disputes.none")}
                     </div>
                   ) : (
                     disputes
-                      .filter(d => {
-                        const contractTitle = contracts.find(c => c.id === d.contract_id)?.title || "";
-                        const matchesStatus = disputeFilter === 'all' || d.status === disputeFilter;
+                      .filter(d_item => {
+                        const contractTitle = contracts.find(c_item => c_item.id === d_item.contract_id)?.title || "";
+                        const matchesStatus = disputeFilter === 'all' || d_item.status === disputeFilter;
                         const searchLower = disputeSearch.toLowerCase();
                         const matchesSearch =
                           contractTitle.toLowerCase().includes(searchLower) ||
-                          (d.reason || "").toLowerCase().includes(searchLower);
+                          (d_item.reason || "").toLowerCase().includes(searchLower);
                         return matchesStatus && matchesSearch;
                       })
-                      .map((d) => {
-                        const relatedContract = contracts.find(c => c.id === d.contract_id);
+                      .map((d_item) => {
+                        const relatedContract = contracts.find(c_item => c_item.id === d_item.contract_id);
                         return (
                           <div
-                            key={d.id}
-                            onClick={() => setSelectedAdminDispute(d)}
+                            key={d_item.id}
+                            onClick={() => setSelectedAdminDispute(d_item)}
                             className={cn(
                               "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
-                              selectedAdminDispute?.id === d.id ? "bg-amber-500/5 border-amber-500/30 ring-1 ring-amber-500/20" : ""
+                              selectedAdminDispute?.id === d_item.id ? "bg-amber-500/5 border-amber-500/30 ring-1 ring-amber-500/20" : ""
                             )}
                           >
                             <div className="flex justify-between items-start mb-1">
-                              <span className="text-sm font-bold truncate pr-2">{relatedContract?.title || "Contract"}</span>
-                              <Badge variant={d.status === 'open' ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0 capitalize">
-                                {d.status}
+                              <span className="text-sm font-bold truncate pr-2">{relatedContract?.title || t("common.contract")}</span>
+                              <Badge variant={d_item.status === 'open' ? "destructive" : "outline"} className="text-[10px] px-1.5 py-0 capitalize">
+                                {t(`common.status.${d_item.status}`, { defaultValue: d_item.status })}
                               </Badge>
                             </div>
-                            <p className="text-[10px] text-muted-foreground truncate mb-1 italic">"{d.reason}"</p>
+                            <p className="text-[10px] text-muted-foreground truncate mb-1 italic">"{d_item.reason}"</p>
                             <div className="flex justify-between items-center text-[10px] text-muted-foreground/60">
-                               <span>ID: {d.id.slice(0, 8)}</span>
-                               <span>{new Date(d.created_at).toLocaleDateString()}</span>
+                               <span>ID: {d_item.id.slice(0, 8)}</span>
+                               <span>{new Date(d_item.created_at).toLocaleDateString()}</span>
                             </div>
                           </div>
                         );
@@ -941,31 +908,30 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Dispute Resolution Center Chat View */}
               <div className="lg:col-span-8 flex flex-col h-full bg-muted/10 rounded-xl overflow-hidden relative">
                 {!selectedAdminDispute ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
                     <ShieldAlert className="h-16 w-16 mb-4" />
-                    <p>Select a dispute to open the Resolution Center</p>
+                    <p>{t("admin.disputes.selectMsg")}</p>
                   </div>
                 ) : (() => {
-                  const contract = contracts.find(c => c.id === selectedAdminDispute.contract_id);
-                  const milestone = milestones.find(m => m.id === selectedAdminDispute.milestone_id);
-                  const client = users.find(u => u.id === contract?.client_id);
-                  const freelancer = users.find(u => u.id === contract?.freelancer_id);
+                  const contract_val = contracts.find(c_item => c_item.id === selectedAdminDispute.contract_id);
+                  const milestone_val = milestones.find(m_item => m_item.id === selectedAdminDispute.milestone_id);
+                  const client_val = users.find(u_item => u_item.id === contract_val?.client_id);
+                  const freelancer_val = users.find(u_item => u_item.id === contract_val?.freelancer_id);
 
                   return (
                     <>
                       <div className="p-6 bg-background/50 border-b border-border flex justify-between items-start">
                         <div className="flex-1 min-w-0 pr-6">
-                          <h3 className="text-lg font-bold truncate mb-2">{contract?.title} - Dispute</h3>
+                          <h3 className="text-lg font-bold truncate mb-2">{contract_val?.title} - {t("common.dispute")}</h3>
                           <div className="flex flex-wrap items-center gap-3">
                              <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] max-w-[300px] truncate block py-1">
-                               Milestone: {milestone?.title || milestone?.name || "N/A"}
+                               {t("common.milestone")}: {milestone_val?.title || milestone_val?.name || "N/A"}
                              </Badge>
                              <div className="flex items-center gap-1 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
                                 <DollarSign className="h-3 w-3 text-amber-500" />
-                                <span className="text-[10px] font-bold text-amber-500">{milestone?.amount?.toLocaleString()} Locked</span>
+                                <span className="text-[10px] font-bold text-amber-500">{milestone_val?.amount?.toLocaleString()} {t("admin.disputes.locked")}</span>
                              </div>
                           </div>
                         </div>
@@ -973,17 +939,17 @@ export default function AdminDashboard() {
                           {selectedAdminDispute.status === "open" && (
                             <div className="flex gap-3">
                                <Button size="sm" variant="hero" className="h-9 px-4 shadow-lg shadow-primary/20" onClick={() => handleResolveDispute(selectedAdminDispute.id, "release")}>
-                                 Release to Freelancer
+                                 {t("admin.disputes.releaseBtn")}
                                </Button>
                                <Button size="sm" variant="outline" className="h-9 px-4 border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => handleResolveDispute(selectedAdminDispute.id, "refund")}>
-                                 Refund Client
+                                 {t("admin.disputes.refundBtn")}
                                </Button>
                             </div>
                           )}
                           <button
                             onClick={() => setSelectedAdminDispute(null)}
                             className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all border border-border"
-                            title="Close"
+                            title={t("common.close")}
                           >
                             <X className="h-5 w-5" />
                           </button>
@@ -991,40 +957,39 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="p-3 bg-amber-500/5 border-b border-amber-500/10">
-                         <p className="text-[10px] text-muted-foreground font-medium uppercase mb-1">Dispute Reason:</p>
+                         <p className="text-[10px] text-muted-foreground font-medium uppercase mb-1">{t("admin.disputes.reasonLabel")}:</p>
                          <p className="text-xs italic text-foreground bg-background/50 p-2 rounded border border-amber-500/10">
                            {selectedAdminDispute.reason}
                          </p>
                          <div className="flex gap-4 mt-2">
-                            <div className="text-[10px]"><span className="text-muted-foreground">Client:</span> <span className="font-medium">{client?.full_name}</span></div>
-                            <div className="text-[10px]"><span className="text-muted-foreground">Freelancer:</span> <span className="font-medium">{freelancer?.full_name}</span></div>
+                            <div className="text-[10px]"><span className="text-muted-foreground">{t("common.client")}:</span> <span className="font-medium">{client_val?.full_name}</span></div>
+                            <div className="text-[10px]"><span className="text-muted-foreground">{t("common.freelancer")}:</span> <span className="font-medium">{freelancer_val?.full_name}</span></div>
                          </div>
                       </div>
 
-                      {/* Conversation Area */}
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                         {disputeMessages.length === 0 ? (
                           <div className="py-12 text-center">
-                            <p className="text-xs text-muted-foreground italic">No messages in this dispute center yet.</p>
-                            <p className="text-[10px] text-muted-foreground mt-1">Start the conversation by dropping a message below.</p>
+                            <p className="text-xs text-muted-foreground italic">{t("admin.disputes.noMessages")}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">{t("admin.disputes.startConversation")}</p>
                           </div>
                         ) : (
-                          disputeMessages.map((msg) => {
-                            const isMe = msg.user_id === user?.id;
-                            const isClientMsg = msg.user_id === contract?.client_id;
-                            const isFreelancerMsg = msg.user_id === contract?.freelancer_id;
+                          disputeMessages.map((msg_item) => {
+                            const isMe = msg_item.user_id === user?.id;
+                            const isClientMsg = msg_item.user_id === contract_val?.client_id;
+                            const isFreelancerMsg = msg_item.user_id === contract_val?.freelancer_id;
                             
                             return (
-                              <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+                              <div key={msg_item.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
                                 <div className="flex items-center gap-1.5 mb-1 px-1">
                                   <span className="text-[10px] font-bold text-muted-foreground">
-                                    {isMe ? "You (Admin)" : 
-                                     isClientMsg ? `${client?.full_name} (Client)` : 
-                                     isFreelancerMsg ? `${freelancer?.full_name} (Freelancer)` :
-                                     (msg.profiles?.full_name || 'User')}
+                                    {isMe ? t("admin.disputes.youAdmin") : 
+                                     isClientMsg ? `${client_val?.full_name} (${t("common.client")})` : 
+                                     isFreelancerMsg ? `${freelancer_val?.full_name} (${t("common.freelancer")})` :
+                                     (msg_item.profiles?.full_name || t("common.user"))}
                                   </span>
                                   <span className="text-[9px] text-muted-foreground/50">
-                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(msg_item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
                                 <div className={cn(
@@ -1034,7 +999,7 @@ export default function AdminDashboard() {
                                   isFreelancerMsg ? "bg-green-500/10 text-foreground border border-green-500/20 rounded-tl-none" :
                                   "bg-card text-foreground rounded-tl-none border border-border"
                                 )}>
-                                  {msg.message}
+                                  {msg_item.message}
                                 </div>
                               </div>
                             );
@@ -1042,12 +1007,11 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      {/* Reply Box */}
                       {selectedAdminDispute.status === "open" && (
                         <div className="p-4 bg-background/50 border-t border-border">
                           <form onSubmit={handleSendDisputeReply} className="flex gap-2">
                             <Input
-                              placeholder="Type your message to resolve this dispute..."
+                              placeholder={t("admin.disputes.replyPlaceholder")}
                               className="flex-1"
                               value={newDisputeReply}
                               onChange={(e) => setNewDisputeReply(e.target.value)}
@@ -1057,7 +1021,7 @@ export default function AdminDashboard() {
                             </Button>
                           </form>
                           <p className="text-[10px] text-muted-foreground mt-2 text-center">
-                            Messages sent here are visible to both the Client and the Freelancer.
+                            {t("admin.disputes.visibilityMsg")}
                           </p>
                         </div>
                       )}
@@ -1071,11 +1035,11 @@ export default function AdminDashboard() {
           <TabsContent value="contracts" className="glass-card p-6">
             <div className="mb-6 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className="text-xl font-semibold">All Contracts</h2>
+                <h2 className="text-xl font-semibold">{t("admin.contracts.title")}</h2>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search contracts..."
+                    placeholder={t("admin.contracts.searchPlaceholder")}
                     className="pl-9"
                     value={contractSearch}
                     onChange={(e) => setContractSearch(e.target.value)}
@@ -1083,15 +1047,15 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {["all", "pending", "active", "completed", "cancelled"].map((s) => (
+                {["all", "pending", "active", "completed", "cancelled"].map((s_item) => (
                   <Button
-                    key={s}
+                    key={s_item}
                     size="sm"
-                    variant={contractFilter === s ? "hero" : "outline"}
+                    variant={contractFilter === s_item ? "hero" : "outline"}
                     className="capitalize"
-                    onClick={() => setContractFilter(s)}
+                    onClick={() => setContractFilter(s_item)}
                   >
-                    {s}
+                    {t(`common.status.${s_item}`, { defaultValue: s_item })}
                   </Button>
                 ))}
               </div>
@@ -1100,87 +1064,85 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Freelancer</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Last Update</TableHead>
-                    <TableHead>Completion Date</TableHead>
+                    <TableHead>{t("common.title")}</TableHead>
+                    <TableHead>{t("common.status.label")}</TableHead>
+                    <TableHead>{t("common.amount")}</TableHead>
+                    <TableHead>{t("common.client")}</TableHead>
+                    <TableHead>{t("common.freelancer")}</TableHead>
+                    <TableHead>{t("common.created")}</TableHead>
+                    <TableHead>{t("common.lastUpdate")}</TableHead>
+                    <TableHead>{t("common.completionDate")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {contracts
-                    .filter(c => {
-                      const client = users.find(u => u.id === c.client_id);
-                      const freelancer = c.freelancer_id ? users.find(u => u.id === c.freelancer_id) : null;
+                    .filter(c_item => {
+                      const client_val = users.find(u_item => u_item.id === c_item.client_id);
+                      const freelancer_val = c_item.freelancer_id ? users.find(u_item => u_item.id === c_item.freelancer_id) : null;
                       const searchLower = contractSearch.toLowerCase();
                       
                       const matchesSearch = 
-                        c.title.toLowerCase().includes(searchLower) ||
-                        c.id.toLowerCase().includes(searchLower) ||
-                        (client?.full_name || "").toLowerCase().includes(searchLower) ||
-                        (client?.email || "").toLowerCase().includes(searchLower) ||
-                        (freelancer?.full_name || "").toLowerCase().includes(searchLower) ||
-                        (freelancer?.email || "").toLowerCase().includes(searchLower);
+                        c_item.title.toLowerCase().includes(searchLower) ||
+                        c_item.id.toLowerCase().includes(searchLower) ||
+                        (client_val?.full_name || "").toLowerCase().includes(searchLower) ||
+                        (client_val?.email || "").toLowerCase().includes(searchLower) ||
+                        (freelancer_val?.full_name || "").toLowerCase().includes(searchLower) ||
+                        (freelancer_val?.email || "").toLowerCase().includes(searchLower);
 
-                      const matchesFilter = contractFilter === "all" || c.status === contractFilter;
+                      const matchesFilter = contractFilter === "all" || c_item.status === contractFilter;
                       
                       return matchesSearch && matchesFilter;
                     })
-                    .map(c => {
-                      const client = users.find(u => u.id === c.client_id);
-                      const freelancer = c.freelancer_id ? users.find(u => u.id === c.freelancer_id) : null;
+                    .map(c_item => {
+                      const client_val = users.find(u_item => u_item.id === c_item.client_id);
+                      const freelancer_val = c_item.freelancer_id ? users.find(u_item => u_item.id === c_item.freelancer_id) : null;
                       
-                      // Defensive date formatting
                       const formatDateSafe = (dateStr: any) => {
                         return formatDate(dateStr) || null;
                       };
 
-                      const createdDate = formatDateSafe(c.created_at) || '—';
-                      const updatedDate = formatDateSafe(c.updated_at) || createdDate;
+                      const createdDate = formatDateSafe(c_item.created_at) || '—';
+                      const updatedDate = formatDateSafe(c_item.updated_at) || createdDate;
                       
-                      // Completion date: use completed_at if exists, or updated_at if status is completed
                       let completionDate = '—';
-                      if (c.status === 'completed') {
-                        completionDate = formatDateSafe(c.completed_at) || formatDateSafe(c.updated_at) || updatedDate;
+                      if (c_item.status === 'completed') {
+                        completionDate = formatDateSafe(c_item.completed_at) || formatDateSafe(c_item.updated_at) || updatedDate;
                       }
 
                       return (
-                        <TableRow key={c.id} className="text-xs">
+                        <TableRow key={c_item.id} className="text-xs">
                           <TableCell className="font-medium">
                             <div className="flex flex-col">
-                              <span>{c.title}</span>
-                              <span className="text-[10px] text-muted-foreground font-mono">{c.id.slice(0, 8)}...</span>
+                              <span>{c_item.title}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono">{c_item.id.slice(0, 8)}...</span>
                             </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={cn(
                               "capitalize text-[10px]",
-                              c.status === 'active' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
-                              c.status === 'completed' ? "bg-green-500/10 text-green-500 border-green-500/20" :
-                              c.status === 'pending' ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
+                              c_item.status === 'active' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                              c_item.status === 'completed' ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                              c_item.status === 'pending' ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
                               "bg-muted text-muted-foreground"
                             )}>
-                              {c.status.replace("_", " ")}
+                              {t(`common.status.${c_item.status}`, { defaultValue: c_item.status.replace("_", " ") })}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-bold">${c.total_amount?.toLocaleString()}</TableCell>
+                          <TableCell className="font-bold">${c_item.total_amount?.toLocaleString()}</TableCell>
                           <TableCell>
                             <div className="flex flex-col">
-                              <span className="font-medium text-foreground">{client?.full_name || 'Unknown'}</span>
-                              <span className="text-[10px] text-muted-foreground">{client?.email || c.client_id.slice(0, 8)}</span>
+                              <span className="font-medium text-foreground">{client_val?.full_name || t("common.unknown")}</span>
+                              <span className="text-[10px] text-muted-foreground">{client_val?.email || c_item.client_id.slice(0, 8)}</span>
                             </div>
                           </TableCell>
                           <TableCell>
-                            {freelancer ? (
+                            {freelancer_val ? (
                               <div className="flex flex-col">
-                                <span className="font-medium text-foreground">{freelancer.full_name || 'Anonymous'}</span>
-                                <span className="text-[10px] text-muted-foreground">{freelancer.email || c.freelancer_id.slice(0, 8)}</span>
+                                <span className="font-medium text-foreground">{freelancer_val.full_name || t("common.anonymous")}</span>
+                                <span className="text-[10px] text-muted-foreground">{freelancer_val.email || c_item.freelancer_id.slice(0, 8)}</span>
                               </div>
                             ) : (
-                              <span className="text-amber-500 italic">Awaiting acceptance</span>
+                              <span className="text-amber-500 italic">{t("dashboard.awaitingAcceptance")}</span>
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{createdDate}</TableCell>
@@ -1197,11 +1159,11 @@ export default function AdminDashboard() {
           <TabsContent value="users" className="glass-card p-6">
             <div className="mb-6 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className="text-xl font-semibold">Registered Users</h2>
+                <h2 className="text-xl font-semibold">{t("admin.users.title")}</h2>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search users..."
+                    placeholder={t("admin.users.searchPlaceholder")}
                     className="pl-9"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
@@ -1210,31 +1172,31 @@ export default function AdminDashboard() {
               </div>
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex flex-col gap-1.5 min-w-[150px]">
-                  <Label className="text-xs text-muted-foreground">KYC Status</Label>
+                  <Label className="text-xs text-muted-foreground">{t("admin.users.kycLabel")}</Label>
                   <Select value={userFilter} onValueChange={setUserFilter}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All KYC States" />
+                      <SelectValue placeholder={t("admin.users.allKYC")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All KYC States</SelectItem>
-                      <SelectItem value="verified">Verified</SelectItem>
-                      <SelectItem value="pending">Pending Review</SelectItem>
-                      <SelectItem value="no_kyc">No Documents</SelectItem>
+                      <SelectItem value="all">{t("admin.users.allKYC")}</SelectItem>
+                      <SelectItem value="verified">{t("common.status.verified")}</SelectItem>
+                      <SelectItem value="pending">{t("common.status.pending")}</SelectItem>
+                      <SelectItem value="no_kyc">{t("admin.users.noKYC")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="flex flex-col gap-1.5 min-w-[150px]">
-                  <Label className="text-xs text-muted-foreground">Account Status</Label>
+                  <Label className="text-xs text-muted-foreground">{t("admin.users.statusLabel")}</Label>
                   <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="All Account Statuses" />
+                      <SelectValue placeholder={t("admin.users.allStatus")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="active">Active Only</SelectItem>
-                      <SelectItem value="deactivated">Deactivated</SelectItem>
-                      <SelectItem value="locked">Locked</SelectItem>
+                      <SelectItem value="all">{t("admin.users.allStatus")}</SelectItem>
+                      <SelectItem value="active">{t("common.status.active")}</SelectItem>
+                      <SelectItem value="deactivated">{t("common.status.deactivated")}</SelectItem>
+                      <SelectItem value="locked">{t("common.status.locked")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1244,59 +1206,57 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead>Name</TableHead><TableHead>Role</TableHead>
-                    <TableHead>KYC Status</TableHead><TableHead>Account Status</TableHead>
-                    <TableHead>Wallet</TableHead><TableHead>User ID</TableHead><TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("common.name")}</TableHead><TableHead>{t("common.role")}</TableHead>
+                    <TableHead>{t("admin.users.kycCol")}</TableHead><TableHead>{t("admin.users.statusCol")}</TableHead>
+                    <TableHead>{t("common.wallet")}</TableHead><TableHead>{t("admin.users.idCol")}</TableHead><TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {users
-                    .filter(u => {
-                      const matchesSearch = (u.full_name || "").toLowerCase().includes(userSearch.toLowerCase()) || u.id.toLowerCase().includes(userSearch.toLowerCase());
+                    .filter(u_item => {
+                      const matchesSearch = (u_item.full_name || "").toLowerCase().includes(userSearch.toLowerCase()) || u_item.id.toLowerCase().includes(userSearch.toLowerCase());
 
-                      // Filter by KYC Status
                       let matchesKyc = true;
-                      if (userFilter === "verified") matchesKyc = u.kyc_verified === true;
-                      else if (userFilter === "pending") matchesKyc = !u.kyc_verified && u.id_doc_front_url;
-                      else if (userFilter === "no_kyc") matchesKyc = !u.kyc_verified && !u.id_doc_front_url;
+                      if (userFilter === "verified") matchesKyc = u_item.kyc_verified === true;
+                      else if (userFilter === "pending") matchesKyc = !u_item.kyc_verified && u_item.id_doc_front_url;
+                      else if (userFilter === "no_kyc") matchesKyc = !u_item.kyc_verified && !u_item.id_doc_front_url;
 
-                      // Filter by Account Status
                       let matchesStatus = true;
-                      if (userStatusFilter !== "all") matchesStatus = u.account_status === userStatusFilter;
+                      if (userStatusFilter !== "all") matchesStatus = u_item.account_status === userStatusFilter;
 
                       return matchesSearch && matchesKyc && matchesStatus;
                     })
-                    .map(u => (
-                      <TableRow key={u.id}>
-                        <TableCell className="font-medium">{u.full_name || 'Anonymous'}</TableCell>
-                        <TableCell>{u.is_admin ? <Badge className="bg-primary">Admin</Badge> : <Badge variant="outline">User</Badge>}</TableCell>
+                    .map(u_item => (
+                      <TableRow key={u_item.id}>
+                        <TableCell className="font-medium">{u_item.full_name || t("common.anonymous")}</TableCell>
+                        <TableCell>{u_item.is_admin ? <Badge className="bg-primary">{t("common.admin")}</Badge> : <Badge variant="outline">{t("common.user")}</Badge>}</TableCell>
                         <TableCell>
-                          {u.kyc_verified === true
-                            ? <Badge className="bg-success/20 text-success border-success/30">Verified</Badge>
-                            : u.id_doc_front_url
-                              ? <Badge className="bg-warning/20 text-warning border-warning/30">Pending</Badge>
-                              : <Badge variant="outline" className="text-muted-foreground">No KYC</Badge>
+                          {u_item.kyc_verified === true
+                            ? <Badge className="bg-success/20 text-success border-success/30">{t("common.status.verified")}</Badge>
+                            : u_item.id_doc_front_url
+                              ? <Badge className="bg-warning/20 text-warning border-warning/30">{t("common.status.pending")}</Badge>
+                              : <Badge variant="outline" className="text-muted-foreground">{t("admin.users.noKYC")}</Badge>
                           }
                         </TableCell>
                         <TableCell>
-                          {u.account_status === 'deactivated'
-                            ? <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> Deactivated</Badge>
-                            : u.account_status === 'locked'
-                              ? <Badge className="bg-warning/20 text-warning border-warning/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> Locked</Badge>
-                              : <Badge className="bg-success/20 text-success border-success/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> Active</Badge>
+                          {u_item.account_status === 'deactivated'
+                            ? <Badge className="bg-destructive/20 text-destructive border-destructive/30 flex w-fit gap-1 items-center"><XCircle className="h-3 w-3" /> {t("common.status.deactivated")}</Badge>
+                            : u_item.account_status === 'locked'
+                              ? <Badge className="bg-warning/20 text-warning border-warning/30 flex w-fit gap-1 items-center"><Lock className="h-3 w-3" /> {t("common.status.locked")}</Badge>
+                              : <Badge className="bg-success/20 text-success border-success/30 flex w-fit gap-1 items-center"><CheckCircle className="h-3 w-3" /> {t("common.status.active")}</Badge>
                           }
                         </TableCell>
-                        <TableCell>${u.wallet_balance?.toLocaleString() || '0'}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-mono">{u.id}</TableCell>
+                        <TableCell>${u_item.wallet_balance?.toLocaleString() || '0'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">{u_item.id}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {u.id_doc_front_url && (
-                              <Button size="sm" variant="outline" onClick={() => openKycModal(u)} className="h-8">
-                                Review KYC
+                            {u_item.id_doc_front_url && (
+                              <Button size="sm" variant="outline" onClick={() => openKycModal(u_item)} className="h-8">
+                                {t("admin.users.reviewKYC")}
                               </Button>
                             )}
 
-                            {!u.is_admin && (
+                            {!u_item.is_admin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -1304,21 +1264,21 @@ export default function AdminDashboard() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel>Account Actions</DropdownMenuLabel>
+                                  <DropdownMenuLabel>{t("admin.users.actionsLabel")}</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
 
-                                  {u.account_status === 'active' ? (
+                                  {u_item.account_status === 'active' ? (
                                     <>
-                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'deactivated')} className="text-red-500 focus:text-red-500">
-                                        <ShieldAlert className="mr-2 h-4 w-4" /> Deactivate Account
+                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u_item.id, 'deactivated')} className="text-red-500 focus:text-red-500">
+                                        <ShieldAlert className="mr-2 h-4 w-4" /> {t("admin.users.deactivate")}
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'locked')} className="text-amber-500 focus:text-amber-500">
-                                        <Lock className="mr-2 h-4 w-4" /> Lock Account
+                                      <DropdownMenuItem onClick={() => handleUpdateUserStatus(u_item.id, 'locked')} className="text-amber-500 focus:text-amber-500">
+                                        <Lock className="mr-2 h-4 w-4" /> {t("admin.users.lock")}
                                       </DropdownMenuItem>
                                     </>
                                   ) : (
-                                    <DropdownMenuItem onClick={() => handleUpdateUserStatus(u.id, 'active')} className="text-emerald-500 focus:text-emerald-500">
-                                      <ShieldCheck className="mr-2 h-4 w-4" /> Reactivate Account
+                                    <DropdownMenuItem onClick={() => handleUpdateUserStatus(u_item.id, 'active')} className="text-emerald-500 focus:text-emerald-500">
+                                      <ShieldCheck className="mr-2 h-4 w-4" /> {t("admin.users.reactivate")}
                                     </DropdownMenuItem>
                                   )}
                                 </DropdownMenuContent>
@@ -1336,11 +1296,11 @@ export default function AdminDashboard() {
           <TabsContent value="transactions" className="glass-card p-6">
             <div className="mb-6 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h2 className="text-xl font-semibold">Master Ledger</h2>
+                <h2 className="text-xl font-semibold">{t("admin.ledger.title")}</h2>
                 <div className="relative w-full md:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by amount, type, user or reference..."
+                    placeholder={t("admin.ledger.searchPlaceholder")}
                     className="pl-9"
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
@@ -1349,22 +1309,22 @@ export default function AdminDashboard() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: "All", value: "all" },
-                  { label: "Wallet Topup", value: "wallet_topup" },
-                  { label: "Escrow Deposit", value: "escrow" },
-                  { label: "Milestone Release", value: "release" },
-                  { label: "Fee", value: "fee" },
-                  { label: "Refund", value: "refund" },
-                  { label: "Withdrawal", value: "withdrawal" }
-                ].map((s) => (
+                  { label: t("common.all"), value: "all" },
+                  { label: t("transactions.type.topup"), value: "wallet_topup" },
+                  { label: t("transactions.type.escrow"), value: "escrow" },
+                  { label: t("transactions.type.released"), value: "release" },
+                  { label: t("common.fee"), value: "fee" },
+                  { label: t("common.refund"), value: "refund" },
+                  { label: t("common.withdrawal"), value: "withdrawal" }
+                ].map((s_item) => (
                   <Button
-                    key={s.value}
+                    key={s_item.value}
                     size="sm"
-                    variant={txFilter === s.value ? "hero" : "outline"}
+                    variant={txFilter === s_item.value ? "hero" : "outline"}
                     className="capitalize"
-                    onClick={() => setTxFilter(s.value)}
+                    onClick={() => setTxFilter(s_item.value)}
                   >
-                    {s.label}
+                    {s_item.label}
                   </Button>
                 ))}
               </div>
@@ -1373,41 +1333,38 @@ export default function AdminDashboard() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="w-[130px]">Type</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Contract</TableHead>
-                    <TableHead className="w-[110px]">Status</TableHead>
-                    <TableHead className="w-[110px]">Amount</TableHead>
-                    <TableHead className="w-[130px]">Date</TableHead>
-                    <TableHead className="w-[120px]">Stripe Ref</TableHead>
-                    <TableHead className="w-[80px] text-right">Admin</TableHead>
+                    <TableHead className="w-[130px]">{t("common.type")}</TableHead>
+                    <TableHead>{t("common.action")}</TableHead>
+                    <TableHead>{t("common.contract")}</TableHead>
+                    <TableHead className="w-[110px]">{t("common.status.label")}</TableHead>
+                    <TableHead className="w-[110px]">{t("common.amount")}</TableHead>
+                    <TableHead className="w-[130px]">{t("common.date")}</TableHead>
+                    <TableHead className="w-[120px]">{t("admin.ledger.stripeRef")}</TableHead>
+                    <TableHead className="w-[80px] text-right">{t("common.admin")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(() => {
                     const filteredTransactions = transactions
-                      .filter(t => {
-                        // Derived type logic for filtering
-                        let effectiveType = t.type;
-                        if (t.type === 'deposit') {
-                          effectiveType = (t.metadata?.contract_id || t.contract_id) ? 'escrow' : 'wallet_topup';
-                        } else if (t.type === 'wallet_topup') {
+                      .filter(tx_item => {
+                        let effectiveType = tx_item.type;
+                        if (tx_item.type === 'deposit') {
+                          effectiveType = (tx_item.metadata?.contract_id || tx_item.contract_id) ? 'escrow' : 'wallet_topup';
+                        } else if (tx_item.type === 'wallet_topup') {
                           effectiveType = 'wallet_topup';
                         }
 
-                        // Resolver Lookups
-                        const contract = contracts.find(c => c.id === (t.metadata?.contract_id || t.contract_id));
-                        const fromUser = users.find(u => u.id === t.from_user_id);
-                        const toUser = users.find(u => u.id === t.to_user_id);
+                        const contract_val = contracts.find(c_item => c_item.id === (tx_item.metadata?.contract_id || tx_item.contract_id));
+                        const fromUser = users.find(u_item => u_item.id === tx_item.from_user_id);
+                        const toUser = users.find(u_item => u_item.id === tx_item.to_user_id);
 
                         const searchLower = txSearch.toLowerCase();
                         const matchesFilter = txFilter === "all" || effectiveType === txFilter;
 
-                        // Broad Search logic
                         const matchesSearch =
                           effectiveType.toLowerCase().includes(searchLower) ||
-                          t.amount.toString().includes(searchLower) ||
-                          (contract?.title || "").toLowerCase().includes(searchLower) ||
+                          tx_item.amount.toString().includes(searchLower) ||
+                          (contract_val?.title || "").toLowerCase().includes(searchLower) ||
                           (fromUser?.full_name || "").toLowerCase().includes(searchLower) ||
                           (toUser?.full_name || "").toLowerCase().includes(searchLower);
 
@@ -1418,50 +1375,45 @@ export default function AdminDashboard() {
                       return (
                         <TableRow>
                           <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
-                            No transactions match your search
+                            {t("admin.ledger.noMatch")}
                           </TableCell>
                         </TableRow>
                       );
                     }
 
-                    return filteredTransactions.map(t => {
-                      // Derived logic for badges
-                      let effectiveType = t.type;
-                      if (t.type === 'deposit') {
-                        effectiveType = (t.metadata?.contract_id || t.contract_id) ? 'escrow' : 'wallet_topup';
+                    return filteredTransactions.map(tx_item => {
+                      let effectiveType = tx_item.type;
+                      if (tx_item.type === 'deposit') {
+                        effectiveType = (tx_item.metadata?.contract_id || tx_item.contract_id) ? 'escrow' : 'wallet_topup';
                       }
 
-                      // Resolve Contract and Users
-                      const contractId = t.metadata?.contract_id || t.contract_id;
-                      const contract = contracts.find(c => c.id === contractId);
-                      const fromUser = users.find(u => u.id === t.from_user_id);
-                      const toUser = users.find(u => u.id === t.to_user_id);
+                      const contractId = tx_item.metadata?.contract_id || tx_item.contract_id;
+                      const contract_val = contracts.find(c_item => c_item.id === contractId);
+                      const fromUser = users.find(u_item => u_item.id === tx_item.from_user_id);
+                      const toUser = users.find(u_item => u_item.id === tx_item.to_user_id);
 
-                      const stripeRef = t.metadata?.payment_intent_id || t.metadata?.stripe_payment_id || t.metadata?.stripe_id || "—";
+                      const stripeRef = tx_item.metadata?.payment_intent_id || tx_item.metadata?.stripe_payment_id || tx_item.metadata?.stripe_id || "—";
 
-                      const contractName = contract?.title || "";
-                      const fromName = fromUser?.full_name || "Unknown";
-                      const toName = toUser?.full_name || "Unknown";
+                      const contractName = contract_val?.title || "";
+                      const fromName = fromUser?.full_name || t("common.unknown");
+                      const toName = toUser?.full_name || t("common.unknown");
 
-                      // Build simplified Action string
-                      let actionStr = "Transaction";
+                      let actionStr = t("common.transaction");
                       switch (effectiveType) {
-                        case 'wallet_topup': actionStr = `Wallet top up by ${toName || fromName}`; break;
-                        case 'escrow': actionStr = `Escrow deposit by ${fromName}`; break;
-                        case 'release': actionStr = `Milestone payment to ${toName}`; break;
-                        case 'fee': actionStr = `Platform fee from ${fromName}`; break;
-                        case 'refund': actionStr = `Refund to ${toName}`; break;
-                        case 'withdrawal': actionStr = `Withdrawal by ${fromName}`; break;
+                        case 'wallet_topup': actionStr = t("admin.ledger.action.topup", { name: toName || fromName }); break;
+                        case 'escrow': actionStr = t("admin.ledger.action.escrow", { name: fromName }); break;
+                        case 'release': actionStr = t("admin.ledger.action.release", { name: toName }); break;
+                        case 'fee': actionStr = t("admin.ledger.action.fee", { name: fromName }); break;
+                        case 'refund': actionStr = t("admin.ledger.action.refund", { name: toName }); break;
+                        case 'withdrawal': actionStr = t("admin.ledger.action.withdrawal", { name: fromName }); break;
                       }
 
-                      // Format Date
-                      const formattedDate = new Intl.DateTimeFormat('en-US', {
+                      const formattedDate = new Intl.DateTimeFormat(undefined, {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric'
-                      }).format(new Date(t.created_at));
+                      }).format(new Date(tx_item.created_at));
 
-                      // Badge Colors
                       const badgeStyles: Record<string, string> = {
                         wallet_topup: "bg-purple-500/20 text-purple-500 border-purple-500/30",
                         escrow: "bg-blue-500/20 text-blue-500 border-blue-500/30",
@@ -1471,24 +1423,23 @@ export default function AdminDashboard() {
                         withdrawal: "bg-gray-500/20 text-gray-400 border-gray-500/30",
                       };
 
-                      // Transaction logic
-                      const status = t.metadata?.status || "completed";
+                      const status = tx_item.metadata?.status || "completed";
 
                       return (
-                        <TableRow key={t.id} className="hover:bg-muted/30 transition-colors text-xs">
+                        <TableRow key={tx_item.id} className="hover:bg-muted/30 transition-colors text-xs">
                           <TableCell>
                             <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${badgeStyles[effectiveType] || ""}`}>
-                              {effectiveType === 'escrow' ? 'Escrow Deposit' : effectiveType.replace('_', ' ')}
+                              {effectiveType === 'escrow' ? t("transactions.type.escrow") : t(`transactions.type.${effectiveType}`, { defaultValue: effectiveType.replace('_', ' ') })}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium text-foreground pr-4">
                             {actionStr}
                           </TableCell>
                           <TableCell>
-                            {contract && contractId ? (
+                            {contract_val && contractId ? (
                               <div
                                 className="cursor-pointer hover:text-primary transition-colors underline-offset-4 hover:underline leading-relaxed"
-                                onClick={() => navigate(`/contracts/${contract.id}`)}
+                                onClick={() => navigate(`/contracts/${contract_val.id}`)}
                               >
                                 {contractName}
                               </div>
@@ -1498,15 +1449,15 @@ export default function AdminDashboard() {
                             <Badge variant="outline" className={`capitalize whitespace-nowrap text-[10px] ${status === 'pending' ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' :
                               status === 'failed' ? 'bg-red-500/20 text-red-500 border-red-500/30' :
                                 'bg-green-500/20 text-green-500 border-green-500/20'
-                              }`}>
-                              {status}
+                                }`}>
+                              {t(`common.status.${status}`, { defaultValue: status })}
                             </Badge>
                           </TableCell>
                           <TableCell className={`font-bold ${(effectiveType === 'release' || effectiveType === 'wallet_topup') ? 'text-emerald-500' :
                             (effectiveType === 'fee') ? 'text-amber-500' :
                               (effectiveType === 'refund') ? 'text-red-500' : 'text-foreground'
                             }`}>
-                            ${t.amount?.toLocaleString()}
+                            ${tx_item.amount?.toLocaleString()}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-muted-foreground">{formattedDate}</TableCell>
                           <TableCell>
@@ -1520,7 +1471,7 @@ export default function AdminDashboard() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     navigator.clipboard.writeText(stripeRef);
-                                    toast.success("Reference copied");
+                                    toast.success(t("admin.success.copied"));
                                   }}
                                 >
                                   <Copy className="h-3 w-3" />
@@ -1535,8 +1486,8 @@ export default function AdminDashboard() {
                                   size="icon"
                                   variant="outline"
                                   className="h-6 w-6 border-green-500/50 text-green-500 hover:bg-green-500/10"
-                                  onClick={() => handleApproveWithdrawal(t)}
-                                  title="Approve & Mark Completed"
+                                  onClick={() => handleApproveWithdrawal(tx_item)}
+                                  title={t("admin.ledger.approveBtn")}
                                 >
                                   <Check className="h-3 w-3" />
                                 </Button>
@@ -1544,8 +1495,8 @@ export default function AdminDashboard() {
                                   size="icon"
                                   variant="outline"
                                   className="h-6 w-6 border-red-500/50 text-red-500 hover:bg-red-500/10"
-                                  onClick={() => handleRejectWithdrawal(t)}
-                                  title="Reject & Refund User"
+                                  onClick={() => handleRejectWithdrawal(tx_item)}
+                                  title={t("admin.ledger.rejectBtn")}
                                 >
                                   <X className="h-3 w-3" />
                                 </Button>
@@ -1565,16 +1516,15 @@ export default function AdminDashboard() {
 
           <TabsContent value="support" className="glass-card p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[600px]">
-              {/* Tickets List */}
               <div className="lg:col-span-4 border-r border-border/50 pr-4 flex flex-col">
                 <div className="mb-4">
-                  <h2 className="text-xl font-semibold mb-1">Support Tickets</h2>
-                  <p className="text-xs text-muted-foreground mb-3">Manage user inquiries and issues</p>
+                  <h2 className="text-xl font-semibold mb-1">{t("admin.support.title")}</h2>
+                  <p className="text-xs text-muted-foreground mb-3">{t("admin.support.subtitle")}</p>
 
                   <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
-                      placeholder="Search by subject, name or email..."
+                      placeholder={t("admin.support.searchPlaceholder")}
                       className="pl-9 h-8 text-xs bg-muted/20"
                       value={ticketSearch}
                       onChange={(e) => setTicketSearch(e.target.value)}
@@ -1582,73 +1532,74 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 mb-2">
-                    {["all", "open", "in progress", "pending user", "resolved", "closed"].map((s) => (
+                    {["all", "open", "in progress", "pending user", "resolved", "closed"].map((s_item) => (
                       <button
-                        key={s}
-                        onClick={() => setTicketFilter(s)}
+                        key={s_item}
+                        onClick={() => setTicketFilter(s_item)}
                         className={cn(
                           "px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all capitalize",
-                          ticketFilter === s
+                          ticketFilter === s_item
                             ? "bg-primary/20 text-primary border-primary/50"
                             : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground/50"
                         )}
                       >
-                        {s}
+                        {t(`common.status.${s_item}`, { defaultValue: s_item })}
                       </button>
                     ))}
                   </div>
                 </div>
+                
                 <div className="overflow-y-auto flex-1 custom-scrollbar pr-2 space-y-2">
-                  {tickets.filter(t => {
-                    const matchesStatus = ticketFilter === 'all' || t.status === ticketFilter;
+                  {tickets.filter(t_item => {
+                    const matchesStatus = ticketFilter === 'all' || t_item.status === ticketFilter;
                     const searchLower = ticketSearch.toLowerCase();
                     const matchesSearch =
-                      t.subject.toLowerCase().includes(searchLower) ||
-                      (t.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
-                      (t.profiles?.email || "").toLowerCase().includes(searchLower);
+                      t_item.subject.toLowerCase().includes(searchLower) ||
+                      (t_item.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
+                      (t_item.profiles?.email || "").toLowerCase().includes(searchLower);
                     return matchesStatus && matchesSearch;
                   }).length === 0 ? (
                     <div className="py-20 text-center text-muted-foreground italic text-sm">
-                      No {ticketFilter !== 'all' ? ticketFilter : ''} tickets found matching your search
+                      {t("admin.support.none")}
                     </div>
                   ) : (
                     tickets
-                      .filter(t => {
-                        const matchesStatus = ticketFilter === 'all' || t.status === ticketFilter;
+                      .filter(t_item => {
+                        const matchesStatus = ticketFilter === 'all' || t_item.status === ticketFilter;
                         const searchLower = ticketSearch.toLowerCase();
                         const matchesSearch =
-                          t.subject.toLowerCase().includes(searchLower) ||
-                          (t.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
-                          (t.profiles?.email || "").toLowerCase().includes(searchLower);
+                          t_item.subject.toLowerCase().includes(searchLower) ||
+                          (t_item.profiles?.full_name || "").toLowerCase().includes(searchLower) ||
+                          (t_item.profiles?.email || "").toLowerCase().includes(searchLower);
                         return matchesStatus && matchesSearch;
                       })
-                      .map((t) => (
+                      .map((t_item) => (
                         <div
-                          key={t.id}
-                          onClick={() => setSelectedAdminTicket(t)}
+                          key={t_item.id}
+                          onClick={() => setSelectedAdminTicket(t_item)}
                           className={cn(
                             "p-3 rounded-lg border border-border/50 cursor-pointer transition-all hover:bg-muted/50",
-                            selectedAdminTicket?.id === t.id ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20" : ""
+                            selectedAdminTicket?.id === t_item.id ? "bg-primary/5 border-primary/30 ring-1 ring-primary/20" : ""
                           )}
                         >
                           <div className="flex justify-between items-start mb-1">
-                            <span className="text-sm font-bold truncate pr-2">{t.subject}</span>
+                            <span className="text-sm font-bold truncate pr-2">{t_item.subject}</span>
                             <Badge variant="outline" className={cn(
                               "text-[10px] px-1.5 py-0 capitalize",
-                              t.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
-                                t.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-bold" :
-                                  t.status === 'pending user' ? "bg-amber-500/20 text-amber-500 border-amber-500/30" :
-                                    t.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                              t_item.status === 'open' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                                t_item.status === 'in progress' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-bold" :
+                                  t_item.status === 'pending user' ? "bg-amber-500/20 text-amber-500 border-amber-500/30" :
+                                    t_item.status === 'resolved' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
                                       "bg-muted text-muted-foreground border-border/50"
                             )}>
-                              {t.status.replace("pending user", "Pending User")}
+                              {t(`common.status.${t_item.status}`, { defaultValue: t_item.status.replace("pending user", "Pending User") })}
                             </Badge>
                           </div>
                           <div className="text-[10px] text-muted-foreground font-medium truncate mb-1">
-                            From: {t.profiles?.full_name || t.user_id.slice(0, 8)} ({t.profiles?.email})
+                            {t("common.from")}: {t_item.profiles?.full_name || t_item.user_id.slice(0, 8)} ({t_item.profiles?.email})
                           </div>
                           <div className="text-[10px] text-muted-foreground/60 text-right">
-                            {new Date(t.updated_at).toLocaleString()}
+                            {new Date(t_item.updated_at).toLocaleString()}
                           </div>
                         </div>
                       ))
@@ -1656,12 +1607,11 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Chat View */}
               <div className="lg:col-span-8 flex flex-col h-full bg-muted/10 rounded-xl overflow-hidden relative">
                 {!selectedAdminTicket ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
                     <MessageSquareText className="h-16 w-16 mb-4" />
-                    <p>Select a ticket to view conversation</p>
+                    <p>{t("admin.support.selectMsg")}</p>
                   </div>
                 ) : (
                   <>
@@ -1669,7 +1619,7 @@ export default function AdminDashboard() {
                       <div>
                         <h3 className="font-bold">{selectedAdminTicket.subject}</h3>
                         <p className="text-[10px] text-muted-foreground">
-                          From: {selectedAdminTicket.profiles?.full_name || 'User'} ({selectedAdminTicket.profiles?.email || selectedAdminTicket.user_id.slice(0, 8)})
+                          {t("common.from")}: {selectedAdminTicket.profiles?.full_name || t("common.user")} ({selectedAdminTicket.profiles?.email || selectedAdminTicket.user_id.slice(0, 8)})
                         </p>
                       </div>
                       <div className="flex gap-2 items-center">
@@ -1677,26 +1627,26 @@ export default function AdminDashboard() {
                           value={selectedAdminTicket.status}
                           onValueChange={async (val) => {
                             await supabase.from("support_tickets").update({ status: val }).eq("id", selectedAdminTicket.id);
-                            setTickets(prev => prev.map(t => t.id === selectedAdminTicket.id ? { ...t, status: val } : t));
+                            setTickets(prev => prev.map(t_item => t_item.id === selectedAdminTicket.id ? { ...t_item, status: val } : t_item));
                             setSelectedAdminTicket({ ...selectedAdminTicket, status: val });
-                            toast.success(`Ticket status updated to ${val}`);
+                            toast.success(t("admin.success.statusUpdated", { status: val }));
                           }}
                         >
                           <SelectTrigger className="w-[120px] h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="open">Open (New)</SelectItem>
-                            <SelectItem value="in progress">In Progress</SelectItem>
-                            <SelectItem value="pending user">Pending User Reply</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
-                            <SelectItem value="closed">Closed</SelectItem>
+                            <SelectItem value="open">{t("admin.support.status.open")}</SelectItem>
+                            <SelectItem value="in progress">{t("admin.support.status.inProgress")}</SelectItem>
+                            <SelectItem value="pending user">{t("admin.support.status.pendingUser")}</SelectItem>
+                            <SelectItem value="resolved">{t("admin.support.status.resolved")}</SelectItem>
+                            <SelectItem value="closed">{t("admin.support.status.closed")}</SelectItem>
                           </SelectContent>
                         </Select>
                         <button
                           onClick={() => setSelectedAdminTicket(null)}
                           className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
-                          title="Back to ticket list"
+                          title={t("admin.support.backToList")}
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1704,24 +1654,24 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                      {adminMessages.map((msg) => (
+                      {adminMessages.map((msg_item) => (
                         <div
-                          key={msg.id}
+                          key={msg_item.id}
                           className={cn(
                             "flex flex-col max-w-[85%]",
-                            msg.is_admin_reply ? "ml-auto items-end" : "mr-auto items-start"
+                            msg_item.is_admin_reply ? "ml-auto items-end" : "mr-auto items-start"
                           )}
                         >
                           <div className={cn(
                             "p-3 rounded-xl text-xs leading-relaxed",
-                            msg.is_admin_reply
+                            msg_item.is_admin_reply
                               ? "bg-primary text-primary-foreground rounded-tr-none"
                               : "bg-background border border-border rounded-tl-none"
                           )}>
-                            {msg.message}
+                            {msg_item.message}
                           </div>
                           <span className="text-[9px] text-muted-foreground mt-1">
-                            {new Date(msg.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(msg_item.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       ))}
@@ -1730,7 +1680,7 @@ export default function AdminDashboard() {
                     <form onSubmit={handleSendAdminReply} className="p-4 bg-background/50 border-t border-border">
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Type reply..."
+                          placeholder={t("admin.support.replyPlaceholder")}
                           className="text-xs h-10"
                           value={newAdminReply}
                           onChange={(e) => setNewAdminReply(e.target.value)}
@@ -1748,47 +1698,43 @@ export default function AdminDashboard() {
         </Tabs>
       </div>
 
-      {/* KYC Review Modal */}
       {kycUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl">
             <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-6 py-4">
-              <h2 className="text-lg font-bold text-foreground">KYC Review — {kycUser.full_name || "User"}</h2>
+              <h2 className="text-lg font-bold text-foreground">{t("admin.kyc.reviewTitle")} — {kycUser.full_name || t("common.user")}</h2>
               <button onClick={() => setKycUser(null)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
                 <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Personal details */}
               <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
-                <h3 className="text-sm font-semibold text-foreground mb-3">Personal Details</h3>
+                <h3 className="text-sm font-semibold text-foreground mb-3">{t("admin.kyc.personalDetails")}</h3>
                 {[
-                  ["Full Name", kycUser.full_name],
-                  ["Email", kycUser.id],
-                  ["Phone", kycUser.phone],
-                  ["Date of Birth", kycUser.date_of_birth],
-                  ["Country", kycUser.country],
-                  ["Account Type", kycUser.account_type],
-                  ["ID Type", kycUser.id_type?.replace("_", " ")],
-                  ["ID Number", kycUser.id_number],
-                ].map(([label, value]) => value ? (
-                  <div key={label} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="text-foreground font-medium capitalize">{value}</span>
+                  [t("common.fullName"), kycUser.full_name],
+                  [t("common.email"), kycUser.id],
+                  [t("common.phone"), kycUser.phone],
+                  [t("common.dob"), kycUser.date_of_birth],
+                  [t("common.country"), kycUser.country],
+                  [t("common.accountType"), kycUser.account_type],
+                  [t("common.idType"), kycUser.id_type?.replace("_", " ")],
+                  [t("common.idNumber"), kycUser.id_number],
+                ].map(([label_val, value_val]) => value_val ? (
+                  <div key={label_val} className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{label_val}</span>
+                    <span className="text-foreground font-medium capitalize">{value_val}</span>
                   </div>
                 ) : null)}
               </div>
 
-              {/* Document previews */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-foreground">Identity Documents</h3>
-                <DocPreview url={kycUrls.front} label="ID Front" />
-                {kycUser.id_doc_back_url && <DocPreview url={kycUrls.back} label="ID Back" />}
-                <DocPreview url={kycUrls.selfie} label="Selfie Holding ID" />
+                <h3 className="text-sm font-semibold text-foreground">{t("admin.kyc.identityDocs")}</h3>
+                <DocPreview url={kycUrls.front} label={t("admin.kyc.idFront")} />
+                {kycUser.id_doc_back_url && <DocPreview url={kycUrls.back} label={t("admin.kyc.idBack")} />}
+                <DocPreview url={kycUrls.selfie} label={t("admin.kyc.selfie")} />
               </div>
 
-              {/* Action buttons */}
               <div className="space-y-3 pt-2 border-t border-border">
                 {!showRejectInput ? (
                   <div className="flex gap-3">
@@ -1797,7 +1743,7 @@ export default function AdminDashboard() {
                       disabled={kycAction}
                       onClick={handleApprove}
                     >
-                      <CheckCircle className="h-4 w-4" /> Approve KYC
+                      <CheckCircle className="h-4 w-4" /> {t("admin.kyc.approveBtn")}
                     </Button>
                     <Button
                       variant="outline"
@@ -1805,17 +1751,17 @@ export default function AdminDashboard() {
                       disabled={kycAction}
                       onClick={() => setShowRejectInput(true)}
                     >
-                      <XCircle className="h-4 w-4" /> Reject KYC
+                      <XCircle className="h-4 w-4" /> {t("admin.kyc.rejectBtn")}
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <Label>Rejection Reason <span className="text-destructive">*</span></Label>
+                      <Label>{t("admin.kyc.rejectionReasonLabel")} <span className="text-destructive">*</span></Label>
                       <Input
                         value={rejectReason}
                         onChange={e => setRejectReason(e.target.value)}
-                        placeholder="Explain why KYC is rejected (visible to user)"
+                        placeholder={t("admin.kyc.rejectionReasonPlaceholder")}
                       />
                     </div>
                     <div className="flex gap-3">
@@ -1825,9 +1771,9 @@ export default function AdminDashboard() {
                         disabled={kycAction}
                         onClick={handleReject}
                       >
-                        {kycAction ? "Rejecting..." : "Confirm Rejection"}
+                        {kycAction ? t("common.processing") : t("admin.kyc.confirmRejectBtn")}
                       </Button>
-                      <Button variant="ghost" onClick={() => setShowRejectInput(false)}>Cancel</Button>
+                      <Button variant="ghost" onClick={() => setShowRejectInput(false)}>{t("common.cancel")}</Button>
                     </div>
                   </div>
                 )}
