@@ -75,7 +75,25 @@ const InviteAccept = () => {
   const declineContract = async () => {
     if (!contract || !user) return;
     setAccepting(true);
-    const { error: cError } = await supabase.from("contracts").update({ status: "rejected" }).eq("id", contract.id);
+    
+    // Check if contract has been funded
+    if (contract.funded_at) {
+      const { error: rpcError } = await supabase.rpc("update_wallet_and_log", {
+        p_user_id: contract.client_id,
+        p_amount: contract.total_amount,
+        p_type: 'refund',
+        p_contract_id: contract.id
+      });
+      
+      if (rpcError) {
+        console.error("Refund error:", rpcError);
+        toast.error("Contract declined, but refund failed. Please contact support.");
+      } else {
+        toast.info(t("invite.clientFundsReturned", { defaultValue: "The client's funds have been returned." }));
+      }
+    }
+
+    const { error: cError } = await supabase.from("contracts").update({ status: "cancelled" }).eq("id", contract.id);
     if (cError) { toast.error(t("invite.declineFailed") + ": " + cError.message); setAccepting(false); return; }
     await supabase.from("notifications").insert({
       user_id: contract.client_id, type: "update",

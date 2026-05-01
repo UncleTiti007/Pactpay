@@ -115,33 +115,19 @@ serve(async (req) => {
         profile = newProfile;
       }
 
-      const newBalance = (profile?.wallet_balance || 0) + topupAmount;
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ wallet_balance: newBalance })
-        .eq("id", user.id);
-
-      if (updateError) {
-        console.error("Balance update failed:", updateError.message);
-        throw new Error("Failed to update wallet balance");
-      }
-      
-      console.log("Recording transaction for user:", user.id);
-      const { error: txError } = await supabase.from("transactions").insert({
-        type: "deposit",
-        amount: topupAmount,
-        to_user_id: user.id,
-        from_user_id: null,
-        metadata: { 
-          stripe_reference: payment_intent_id,
-          note: "Wallet top-up via Stripe"
-        }
+      const { error: rpcError } = await supabase.rpc("update_wallet_and_log", {
+        p_user_id: user.id,
+        p_amount: topupAmount,
+        p_type: "deposit",
+        p_stripe_reference: payment_intent_id
       });
 
-      if (txError) {
-        console.error("Transaction record failed (non-critical):", txError.message);
+      if (rpcError) {
+        console.error("Atomic update failed:", rpcError.message);
+        throw new Error("Failed to process topup atomically");
       }
+      
+      const newBalance = (profile?.wallet_balance || 0) + topupAmount;
 
       await supabase.from("notifications").insert({
         user_id: user.id,

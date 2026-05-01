@@ -15,8 +15,11 @@ import {
   Users, AlertTriangle,
   Search, ShieldAlert, CheckCircle2, CheckCircle, XCircle, MoreVertical,
   ShieldCheck, Copy, ArrowRightLeft, Check, X, ImageIcon, Lock,
-  DollarSign, TrendingUp, Send, MessageSquareText, Bell, FileText
+  DollarSign, TrendingUp, Send, MessageSquareText, Bell, FileText, Scale
 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -81,6 +84,9 @@ export default function AdminDashboard() {
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [clientPercent, setClientPercent] = useState(0);
+  const [freelancerPercent, setFreelancerPercent] = useState(100);
+  const [resolutionNotes, setResolutionNotes] = useState("");
 
   useEffect(() => {
     if (!authLoading) {
@@ -354,78 +360,95 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleResolveDispute = async (disputeId: string, resolution: "release" | "refund") => {
-    if (!selectedAdminDispute) return;
-    setResolving(true);
+  const handleResolveDispute = async () => {
+    if (!selectedAdminDispute || !resolutionNotes.trim()) {
+      toast.error("Please provide resolution notes");
+      return;
+    }
     
+    setResolving(true);
     try {
-      const { data: dispute } = await supabase.from("disputes").select("*").eq("id", disputeId).single();
-      if (!dispute || dispute.status === "resolved") throw new Error(t("admin.error.disputeResolved"));
-
-      const { data: ms } = await supabase.from("milestones").select("*").eq("id", dispute.milestone_id).single();
-      const { data: contract } = await supabase.from("contracts").select("*").eq("id", dispute.contract_id).single();
+      const milestone_val = milestones.find(m => m.id === selectedAdminDispute.milestone_id);
+      const contract_val = contracts.find(c => c.id === selectedAdminDispute.contract_id);
       
-      if (!ms || !contract) throw new Error(t("admin.error.relatedDataMissing"));
-
-      if (resolution === "release") {
-        const { error: msError } = await supabase
-          .from("milestones")
-          .update({ status: "completed", released_at: new Date().toISOString() })
-          .eq("id", ms.id);
-        if (msError) throw msError;
-      } else {
-        const { data: p } = await supabase.from("profiles").select("wallet_balance").eq("id", contract.client_id).single();
-        const { error: walletErr } = await supabase.from("profiles").update({ wallet_balance: (p?.wallet_balance || 0) + ms.amount }).eq("id", contract.client_id);
-        if (walletErr) throw walletErr;
-
-        await supabase.from("transactions").insert({
-          type: "refund",
-          amount: ms.amount,
-          to_user_id: contract.client_id,
-          from_user_id: contract.freelancer_id,
-          metadata: { contract_id: contract.id, milestone_id: ms.id, note: "Dispute refunded to client" }
+      if (!milestone_val || !contract_val) throw new Error(t("admin.error.relatedDataMissing"));
+      
+      const totalAmount = milestone_val.amount;
+      const clientAmount = (totalAmount * clientPercent) / 100;
+      const freelancerAmount = (totalAmount * freelancerPercent) / 100;
+      
+      // Credit client refund
+      if (clientAmount > 0) {
+        const { error: clientError } = await supabase.rpc("update_wallet_and_log", {
+          p_user_id: contract_val.client_id,
+          p_amount: clientAmount,
+          p_type: 'refund',
+          p_contract_id: contract_val.id,
+          p_milestone_id: milestone_val.id
         });
-        await supabase.from("milestones").update({ status: "cancelled" }).eq("id", ms.id);
+        if (clientError) throw clientError;
       }
-
+      
+      // Credit freelancer payout
+      if (freelancerAmount > 0) {
+        const { error: freelancerError } = await supabase.rpc("update_wallet_and_log", {
+          p_user_id: contract_val.freelancer_id,
+          p_amount: freelancerAmount,
+          p_type: 'release',
+          p_contract_id: contract_val.id,
+          p_milestone_id: milestone_val.id
+        });
+        if (freelancerError) throw freelancerError;
+      }
+      
+      // Update dispute record
       const { error: disputeErr } = await supabase
         .from("disputes")
         .update({ 
-          status: "resolved"
+          status: "resolved",
+          resolution_notes: resolutionNotes,
+          client_refund_amount: clientAmount,
+          freelancer_payout_amount: freelancerAmount
         })
-        .eq("id", disputeId);
+        .eq("id", selectedAdminDispute.id);
       
       if (disputeErr) throw disputeErr;
+      
+      // Update milestone status
+      await supabase.from("milestones").update({ 
+        status: freelancerPercent === 0 ? "cancelled" : "completed",
+        released_at: freelancerPercent > 0 ? new Date().toISOString() : null
+      }).eq("id", milestone_val.id);
+      
+      // Update contract status if all milestones are done
+      const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract_val.id);
+      const allDone = allMs?.every((m: any) => m.status === "completed" || m.status === "cancelled");
+      await supabase.from("contracts").update({ status: allDone ? "completed" : "active" }).eq("id", contract_val.id);
 
-      try {
-        const { data: allMs } = await supabase.from("milestones").select("status").eq("contract_id", contract.id);
-        const allDone = allMs?.every((m_item: any) => m_item.status === "completed" || m_item.status === "cancelled");
-        await supabase.from("contracts").update({ status: allDone ? "completed" : "active" }).eq("id", contract.id);
+      // Notify both parties
+      const participants = [
+        { id: contract_val.freelancer_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedFreelancer", { title: milestone_val.title || milestone_val.name, resolution: `${freelancerPercent}%` }) },
+        { id: contract_val.client_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedClient", { title: milestone_val.title || milestone_val.name, resolution: `${clientPercent}%` }) }
+      ];
 
-        const participants = [
-          { id: contract.freelancer_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedFreelancer", { title: ms.title || ms.name, resolution: resolution === 'release' ? t("admin.resolution.released") : t("admin.resolution.refunded") }) },
-          { id: contract.client_id, title: t("admin.notif.disputeResolvedTitle"), msg: t("admin.notif.disputeResolvedClient", { title: ms.title || ms.name, resolution: resolution }) }
-        ];
-
-        for (const p of participants) {
-          if (p.id) {
-            await supabase.from("notifications").insert({
-              user_id: p.id,
-              type: "system",
-              title: p.title,
-              message: p.msg,
-              link: `/contracts/${contract.id}`
-            });
-          }
+      for (const p of participants) {
+        if (p.id) {
+          await supabase.from("notifications").insert({
+            user_id: p.id,
+            type: "system",
+            title: p.title,
+            message: p.msg,
+            link: `/contracts/${contract_val.id}`
+          });
         }
-      } catch (secondaryErr) {
-        console.error("Secondary resolution updates failed:", secondaryErr);
       }
 
-      toast.success(t("admin.success.disputeResolved", { resolution }));
+      toast.success(t("admin.success.disputeResolved", { resolution: `${clientPercent}/${freelancerPercent}` }));
       setSelectedAdminDispute(null);
+      setResolutionNotes("");
+      setClientPercent(0);
+      setFreelancerPercent(100);
       fetchAllData();
-
     } catch (err: any) {
       console.error("Dispute resolution failed:", err);
       toast.error(t("admin.error.resolutionFailed") + ": " + err.message);
@@ -937,14 +960,79 @@ export default function AdminDashboard() {
                         </div>
                         <div className="flex gap-4 items-center shrink-0">
                           {selectedAdminDispute.status === "open" && (
-                            <div className="flex gap-3">
-                               <Button size="sm" variant="hero" className="h-9 px-4 shadow-lg shadow-primary/20" onClick={() => handleResolveDispute(selectedAdminDispute.id, "release")}>
-                                 {t("admin.disputes.releaseBtn")}
-                               </Button>
-                               <Button size="sm" variant="outline" className="h-9 px-4 border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => handleResolveDispute(selectedAdminDispute.id, "refund")}>
-                                 {t("admin.disputes.refundBtn")}
-                               </Button>
-                            </div>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="hero" className="h-9 px-4 shadow-lg shadow-primary/20 gap-2">
+                                  <Scale className="h-4 w-4" /> {t("admin.disputes.resolveBtn", { defaultValue: "Resolve Dispute" })}
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[425px] glass-card border-border/50">
+                                <DialogHeader>
+                                  <DialogTitle>{t("admin.disputes.resolveTitle", { defaultValue: "Resolve Dispute" })}</DialogTitle>
+                                  <DialogDescription>
+                                    {t("admin.disputes.resolveDesc", { defaultValue: "Specify the settlement split between the parties." })}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-6 py-4">
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between text-sm font-medium">
+                                      <span className="text-blue-500">{t("common.client")}: {clientPercent}%</span>
+                                      <span className="text-green-500">{t("common.freelancer")}: {freelancerPercent}%</span>
+                                    </div>
+                                    <Slider
+                                      value={[clientPercent]}
+                                      max={100}
+                                      step={5}
+                                      onValueChange={(vals) => {
+                                        setClientPercent(vals[0]);
+                                        setFreelancerPercent(100 - vals[0]);
+                                      }}
+                                      className="py-4"
+                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button size="xs" variant="outline" className="text-[10px] h-7" onClick={() => { setClientPercent(100); setFreelancerPercent(0); }}>
+                                        100% Client
+                                      </Button>
+                                      <Button size="xs" variant="outline" className="text-[10px] h-7" onClick={() => { setClientPercent(0); setFreelancerPercent(100); }}>
+                                        100% Freelancer
+                                      </Button>
+                                      <Button size="xs" variant="outline" className="text-[10px] h-7" onClick={() => { setClientPercent(50); setFreelancerPercent(50); }}>
+                                        50/50 Split
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-2">
+                                    <Label htmlFor="notes" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                      {t("admin.disputes.adminNotes", { defaultValue: "Resolution Summary & Notes" })}
+                                    </Label>
+                                    <Textarea
+                                      id="notes"
+                                      placeholder={t("admin.disputes.notesPlaceholder", { defaultValue: "Explain the reasoning for this split decision..." })}
+                                      value={resolutionNotes}
+                                      onChange={(e) => setResolutionNotes(e.target.value)}
+                                      className="min-h-[100px] text-sm bg-muted/20"
+                                    />
+                                  </div>
+
+                                  <div className="rounded-lg bg-amber-500/5 border border-amber-500/10 p-3">
+                                    <div className="flex justify-between text-xs mb-1">
+                                      <span className="text-muted-foreground">{t("admin.disputes.clientTotal", { defaultValue: "Client gets" })}:</span>
+                                      <span className="font-bold text-blue-500">${((milestone_val?.amount || 0) * clientPercent / 100).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-muted-foreground">{t("admin.disputes.freelancerTotal", { defaultValue: "Freelancer gets" })}:</span>
+                                      <span className="font-bold text-green-500">${((milestone_val?.amount || 0) * freelancerPercent / 100).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button className="w-full" onClick={handleResolveDispute} disabled={resolving || !resolutionNotes.trim()}>
+                                    {resolving ? t("common.processing") : t("admin.disputes.confirmBtn", { defaultValue: "Finalize Resolution" })}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
                           )}
                           <button
                             onClick={() => setSelectedAdminDispute(null)}

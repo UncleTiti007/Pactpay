@@ -30,18 +30,17 @@ serve(async (req: Request) => {
     await supabaseClient.from("milestones").update({ status: "completed" }).eq("id", ms.id);
 
     if (contract.freelancer_id) {
-      const { data: profile } = await supabaseClient.from("profiles").select("wallet_balance").eq("id", contract.freelancer_id).single();
       const payoutAmount = ms.amount;
-      const newBalance = (profile?.wallet_balance || 0) + payoutAmount;
       
-      await supabaseClient.from("profiles").update({ wallet_balance: newBalance }).eq("id", contract.freelancer_id);
-
-      await supabaseClient.from("transactions").insert({
-        type: "release",
-        amount: payoutAmount,
-        to_user_id: contract.freelancer_id,
-        metadata: { contract_id: contract.id, milestone_id: ms.id }
+      const { error: rpcError } = await supabaseClient.rpc("update_wallet_and_log", {
+        p_user_id: contract.freelancer_id,
+        p_amount: payoutAmount,
+        p_type: "release",
+        p_contract_id: contract.id,
+        p_milestone_id: ms.id
       });
+      
+      if (rpcError) throw new Error("Failed atomic wallet update: " + rpcError.message);
 
       await supabaseClient.from("notifications").insert({
         user_id: contract.freelancer_id,

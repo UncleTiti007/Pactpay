@@ -52,38 +52,21 @@ serve(async (req) => {
       throw new Error(`Insufficient balance. You need $${totalRequired.toFixed(2)} but have $${currentBalance.toFixed(2)}.`);
     }
 
-    const newBalance = currentBalance - totalRequired;
+    // 4. Execute atomic update
+    const { error: rpcError } = await supabaseClient.rpc("update_wallet_and_log", {
+      p_user_id: user.id,
+      p_amount: -totalRequired,
+      p_type: "escrow",
+      p_contract_id: contract_id
+    });
 
-    // 4. Execute updates
-    // Deduct wallet
-    const { error: updateErr } = await supabaseClient
-      .from("profiles")
-      .update({ wallet_balance: newBalance })
-      .eq("id", user.id);
-    if (updateErr) throw new Error("Failed to deduct wallet balance");
+    if (rpcError) throw new Error("Failed atomic wallet deduction: " + rpcError.message);
 
     // Update contract status and exact fee
     await supabaseClient
       .from("contracts")
       .update({ status: "active", platform_fee: platformFee })
       .eq("id", contract_id);
-
-    // Insert Transactions
-    const netAmount = totalRequired - platformFee;
-    await supabaseClient.from("transactions").insert([
-      {
-        type: "deposit",
-        amount: netAmount,
-        from_user_id: user.id,
-        metadata: { contract_id }
-      },
-      {
-        type: "fee",
-        amount: platformFee,
-        from_user_id: user.id,
-        metadata: { contract_id, note: "2% platform fee" }
-      }
-    ]);
 
     // Insert Notification to Freelancer if exists
     if (contract.freelancer_id) {

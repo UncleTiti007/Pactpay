@@ -92,68 +92,19 @@ const CheckoutForm = ({ clientSecret, onSuccess, onCancel }: { clientSecret: str
 
   return (
     <div className="space-y-6 pt-4">
-      <div className="flex gap-2 p-1 bg-muted/20 rounded-xl border border-border/30 mb-6">
-        <button
-          onClick={() => setPaymentMethod('card')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-            paymentMethod === 'card' 
-              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 glow-primary' 
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-          }`}
-        >
-          <CreditCard className="h-3.5 w-3.5" />
-          Credit Card
-        </button>
-        <button
-          onClick={() => setPaymentMethod('google_pay')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-            paymentMethod === 'google_pay' 
-              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20 glow-primary' 
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-          }`}
-        >
-          <Wallet className="h-3.5 w-3.5" />
-          Google Pay
-        </button>
-      </div>
-
-      {paymentMethod === 'card' ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="p-4 rounded-lg border border-border/50 bg-background shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-            <CardElement options={cardStyle} />
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={isProcessing}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="hero" disabled={!stripe || isProcessing}>
-              {isProcessing ? "Processing..." : "Confirm Payment"}
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div className="space-y-6 py-4">
-          <div className="p-8 rounded-xl border border-dashed border-border/50 bg-muted/20 flex flex-col items-center justify-center text-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <AlertCircle className="h-6 w-6 text-amber-500" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-semibold text-lg">Work in Progress</h3>
-              <p className="text-sm text-muted-foreground max-w-[250px]">
-                Google Pay integration is currently being finalized and will be available shortly.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
-            <Button type="button" variant="ghost" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button type="button" variant="hero" disabled>
-              Coming Soon
-            </Button>
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="p-4 rounded-lg border border-border/50 bg-background shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <CardElement options={cardStyle} />
         </div>
-      )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={isProcessing}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="hero" disabled={!stripe || isProcessing}>
+            {isProcessing ? "Processing..." : "Confirm Payment"}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 };
