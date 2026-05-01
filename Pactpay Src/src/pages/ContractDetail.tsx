@@ -378,6 +378,14 @@ const ContractDetail = () => {
       if (msErr) throw msErr;
 
       if (contract.freelancer_id) {
+        // 2. Add to milestone history
+        await supabase.from("milestone_submissions").insert({
+          milestone_id: ms.id,
+          created_by: user!.id,
+          type: "release", 
+          note: `Funds released: $${ms.amount.toLocaleString()}`
+        });
+
         const { error: rpcErr } = await supabase.rpc("update_wallet_and_log", {
           p_user_id: contract.freelancer_id,
           p_amount: ms.amount,
@@ -553,7 +561,7 @@ const ContractDetail = () => {
         .from("contracts")
         .update({ 
           freelancer_id: user.id, 
-          status: contract.status === "funded" ? "active" : "pending" 
+          status: contract.status === "funded" ? "active" : "accepted" 
         })
         .eq("id", contract.id);
 
@@ -1632,20 +1640,23 @@ const ContractDetail = () => {
                 </div>
              </div>
 
-            <div className="mt-8 flex justify-between items-center pt-8 border-t border-border/50">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{t("contract.detail.dangerZone")}</p>
-                <p className="text-[10px] text-muted-foreground">{t("contract.detail.dangerZoneDesc")}</p>
+            {isClient && ["draft", "pending", "accepted", "revision_requested"].includes(contract.status) && (
+              <div className="mt-8 flex justify-between items-center pt-8 border-t border-border/50">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{t("contract.detail.dangerZone")}</p>
+                  <p className="text-[10px] text-muted-foreground">{t("contract.detail.dangerZoneDesc")}</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleDeleteContract}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? t("common.processing") : t("contract.detail.deleteContractBtn")}
+                </Button>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive"
-                onClick={handleDeleteContract}
-              >
-                {t("contract.detail.deleteContractBtn")}
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       </div>

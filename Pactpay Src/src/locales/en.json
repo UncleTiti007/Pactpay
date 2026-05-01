@@ -14,6 +14,7 @@
     "confirm": "Confirm",
     "close": "Close",
     "edit": "Edit",
+    "view": "View",
     "delete": "Delete",
     "yes": "Yes",
     "no": "No",
@@ -77,6 +78,7 @@
       "rejected": "Rejected",
       "in_review": "In Review",
       "revision": "Revision",
+      "revision_requested": "Revision Requested",
       "approved": "Approved",
       "released": "Released",
       "open": "Open",
@@ -89,7 +91,8 @@
       "pending_user": "Pending User"
     },
     "filter": {
-      "all": "All"
+      "all": "All",
+      "history": "History"
     },
     "unexpectedError": "Unexpected Error",
     "locked": "Locked",
@@ -359,7 +362,15 @@
     "totalEarnings": "Total Earnings",
     "activeContracts": "Active Contracts",
     "pendingApprovals": "Pending Approvals",
-    "successRate": "Success Rate"
+    "successRate": "Success Rate",
+    "history": {
+      "table": {
+        "title": "Project",
+        "other": "Other Party",
+        "amount": "Amount",
+        "status": "Status"
+      }
+    }
   },
   "stats": {
     "walletBalance": "Wallet Balance",
@@ -762,8 +773,8 @@
     "languageSaved": "Language updated successfully!"
   },
   "admin": {
-    "title": "Title",
-    "subtitle": "Subtitle",
+    "title": "Admin Command Center",
+    "subtitle": "Global platform oversight and financial management",
     "withdrawFees": "Withdraw Platform Fees",
     "openDisputes": "Open Disputes",
     "kycPending": "KYC Pending",

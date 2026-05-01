@@ -10,10 +10,11 @@ import TopUpModal from "@/components/dashboard/TopUpModal";
 import WithdrawModal from "@/components/dashboard/WithdrawModal";
 import PendingApprovalsModal from "@/components/dashboard/PendingApprovalsModal";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText } from "lucide-react";
+import { Plus, ArrowRightLeft, AlertTriangle, X, Lock, MessageSquareText, ChevronLeft, ChevronRight, Bell } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockedDashboardOverlay from "@/components/dashboard/LockedDashboardOverlay";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 interface Contract {
   id: string;
@@ -47,6 +48,11 @@ const Dashboard = () => {
   const [bankDetails, setBankDetails] = useState({ bankName: "", accountName: "", accountNumber: "" });
   const [contractFilter, setContractFilter] = useState("all");
   const [jobFilter, setJobFilter] = useState("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [activeMainTab, setActiveMainTab] = useState("contracts");
+  const [activeJobSubTab, setActiveJobSubTab] = useState("invitations");
+  const [inviteBannerDismissed, setInviteBannerDismissed] = useState(false);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -158,11 +164,27 @@ const Dashboard = () => {
     t("common.explorer");
 
   const myContracts = contracts.filter((c) => c.client_id === user?.id);
-  const myJobs = contracts.filter((c) => c.freelancer_id === user?.id);
-  const myInvitations = contracts.filter((c) => 
-    (c.freelancer_id === user?.id || c.invite_email?.toLowerCase() === user?.email?.toLowerCase()) && 
-    (c.status === "pending" || c.status === "revision_requested")
+  
+  const myJobs = contracts.filter((c) => 
+    c.freelancer_id === user?.id || 
+    (c.invite_email?.toLowerCase() === user?.email?.toLowerCase() && c.client_id !== user?.id)
   );
+
+  const myInvitations = contracts.filter((c) => 
+    (c.status === "pending" || c.status === "funded" || c.status === "revision_requested") &&
+    c.invite_email?.toLowerCase() === user?.email?.toLowerCase() &&
+    c.client_id !== user?.id
+  );
+
+  const activeJobs = myJobs.filter(c => ["accepted", "active", "disputed"].includes(c.status));
+  const historyJobs = myJobs.filter(c => ["completed", "cancelled"].includes(c.status));
+  
+  const totalContractCount = myContracts.filter(c => ["pending", "accepted", "active", "disputed", "revision_requested"].includes(c.status)).length + 
+                           myContracts.filter(c => ["completed", "cancelled"].includes(c.status)).length;
+  
+  const totalJobCount = myInvitations.length + activeJobs.length + historyJobs.length;
+
+  const pendingNewInvitations = myInvitations.filter(c => !c.freelancer_id);
 
   const isNewlyRegistered = !kycVerified && !kycSubmitted;
   const isPendingApproval = !kycVerified && kycSubmitted;
@@ -224,6 +246,55 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Invitation Alert Banner */}
+        {!inviteBannerDismissed && myInvitations.length > 0 && (
+          <div className="mb-6 flex flex-col sm:flex-row items-center justify-between rounded-lg border border-teal-500/30 bg-teal-500/10 dark:bg-teal-500/5 px-4 py-3 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3 text-sm">
+              <div className="h-8 w-8 rounded-full bg-teal-500/20 flex items-center justify-center text-teal-600 dark:text-teal-400">
+                <Bell className="h-4 w-4" />
+              </div>
+              <span className="font-medium text-teal-900 dark:text-teal-100">
+                {myInvitations.length === 1 ? (
+                  <span>
+                    {t("dashboard.invitations.bannerSingle", { 
+                      defaultValue: "You have a contract invitation from {{client}} for {{title}}",
+                      client: myInvitations[0].otherPartyName || t("common.aClient"),
+                      title: myInvitations[0].title 
+                    })}
+                  </span>
+                ) : (
+                  <span>
+                    {t("dashboard.invitations.bannerMultiple", { 
+                      defaultValue: "You have {{count}} pending contract invitations waiting for your response",
+                      count: myInvitations.length 
+                    })}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button 
+                variant="hero" 
+                size="sm" 
+                className="bg-teal-500 hover:bg-teal-600 text-white border-none shadow-sm h-8 px-4 text-xs"
+                onClick={() => {
+                  setActiveMainTab("jobs");
+                  setActiveJobSubTab("invitations");
+                  window.scrollTo({ top: document.querySelector('#main-tabs')?.getBoundingClientRect().top + window.scrollY - 100, behavior: 'smooth' });
+                }}
+              >
+                {t("dashboard.invitations.viewBtn", { defaultValue: "View Invitations" })}
+              </Button>
+              <button 
+                onClick={() => setInviteBannerDismissed(true)}
+                className="p-1 hover:bg-teal-500/10 rounded-full text-teal-600 dark:text-teal-400 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Welcome + Quick Actions */}
         <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
@@ -267,154 +338,293 @@ const Dashboard = () => {
         </div>
 
         {/* Main Content Grid with Locking */}
-        <div className="relative">
+        <div className="relative" id="main-tabs">
           {isNewlyRegistered && <LockedDashboardOverlay />}
-          
           <div className={`grid gap-8 lg:grid-cols-3 ${isNewlyRegistered ? "blur-sm pointer-events-none select-none" : ""}`}>
             {/* Contracts Area */}
             <div className="lg:col-span-2">
-              <Tabs defaultValue="contracts">
-                <TabsList className={`mb-4 bg-card-elevated border border-border/50 ${isPendingApproval ? "opacity-50 pointer-events-none" : ""}`}>
-                  <TabsTrigger value="contracts" className="relative">
+              <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-6">
+                <TabsList className="grid w-full grid-cols-2 bg-muted/20 p-1 rounded-xl h-12">
+                  <TabsTrigger value="contracts" className="rounded-lg font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">
                     {t("dashboard.tabs.myContracts")}
-                    {myContracts.length > 0 && (
-                      <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
-                        {myContracts.length}
+                    {totalContractCount > 0 && (
+                      <span className="ml-2 flex h-4 min-w-4 px-1.5 items-center justify-center rounded-full bg-black/10 text-[10px] font-bold">
+                        {totalContractCount}
                       </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="invitations" className="relative">
-                    {t("dashboard.tabs.invitations")}
-                    {myInvitations.length > 0 && (
-                      <span className="ml-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                        {myInvitations.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="jobs" className="relative">
+                  <TabsTrigger value="jobs" className="rounded-lg font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md relative">
                     {t("dashboard.tabs.myJobs")}
-                    {myJobs.length > 0 && (
-                      <span className="ml-2 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
-                        {myJobs.length}
+                    {totalJobCount > 0 && (
+                      <span className="ml-2 flex h-4 min-w-4 px-1.5 items-center justify-center rounded-full bg-black/10 text-[10px] font-bold">
+                        {totalJobCount}
+                      </span>
+                    )}
+                    {myInvitations.length > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></span>
                       </span>
                     )}
                   </TabsTrigger>
                 </TabsList>
 
-                {/* My Contracts Tab */}
-                <TabsContent value="contracts">
-                  {/* Filter chips */}
-                  {myContracts.length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {["all", "active", "accepted", "pending", "revision_requested", "completed", "cancelled"].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setContractFilter(s)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize ${
-                            contractFilter === s
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-card text-muted-foreground border-border hover:border-primary/40"
-                          }`}
-                        >
-                          {s === "all" ? `${t("common.filter.all")} (${myContracts.length})` : t(`common.status.${s}`, { defaultValue: s })}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {loadingContracts ? (
-                    <p className="text-muted-foreground italic">{t("dashboard.contracts.loading")}</p>
-                  ) : myContracts.length === 0 ? (
-                    <div className="flex h-48 flex-col items-center justify-center glass-card border-dashed text-center p-6 space-y-4">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Plus className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-semibold text-foreground">{t("dashboard.contracts.none")}</p>
-                        <p className="mb-6 text-sm text-muted-foreground/80 dark:text-muted-foreground/60">
-                          {t("dashboard.contracts.noneDesc")}
-                        </p>
-                      </div>
-                      <Button variant="hero" size="sm" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 pointer-events-none" : ""}>
-                        <Link to="/contracts/new">{t("dashboard.contracts.createFirst")}</Link>
-                      </Button>
-                    </div>
-                  ) : (() => {
-                    const filtered = contractFilter === "all" ? myContracts : myContracts.filter(c => c.status === contractFilter);
-                    return filtered.length === 0 ? (
-                      <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
-                        {t("dashboard.contracts.noSpecific", { filter: contractFilter })}
-                      </div>
-                    ) : (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {filtered.map((c: any) => (
-                          <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
-                        ))}
-                      </div>
-                    );
-                  })()}
+                {/* My Contracts Main Tab */}
+                <TabsContent value="contracts" className="space-y-6">
+                  <Tabs defaultValue="active">
+                    <TabsList className="flex w-max gap-2 bg-transparent h-auto p-0 mb-4">
+                      <TabsTrigger value="active" className="h-9 px-4 rounded-full border border-border data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary/50 transition-all text-xs font-bold uppercase tracking-wider">
+                        {t("common.status.active")}
+                        {myContracts.filter(c => ["active", "accepted", "pending", "revision_requested", "disputed"].includes(c.status)).length > 0 && (
+                          <span className="ml-2 bg-primary/20 text-primary px-1.5 rounded-full text-[10px]">
+                            {myContracts.filter(c => ["active", "accepted", "pending", "revision_requested", "disputed"].includes(c.status)).length}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="history" className="h-9 px-4 rounded-full border border-border data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary/50 transition-all text-xs font-bold uppercase tracking-wider">
+                        {t("common.filter.history", { defaultValue: "History" })}
+                        {myContracts.filter(c => ["completed", "cancelled"].includes(c.status)).length > 0 && (
+                          <span className="ml-2 bg-primary/20 text-primary px-1.5 rounded-full text-[10px]">
+                            {myContracts.filter(c => ["completed", "cancelled"].includes(c.status)).length}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="active">
+                      {loadingContracts ? (
+                        <p className="text-muted-foreground italic">{t("dashboard.contracts.loading")}</p>
+                      ) : (() => {
+                        const activeContracts = myContracts.filter(c => ["active", "accepted", "pending", "revision_requested", "disputed"].includes(c.status));
+                        return activeContracts.length === 0 ? (
+                          <div className="flex h-48 flex-col items-center justify-center glass-card border-dashed text-center p-6 space-y-4">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Plus className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground">{t("dashboard.contracts.none")}</p>
+                              <p className="mb-6 text-sm text-muted-foreground/80 dark:text-muted-foreground/60">
+                                {t("dashboard.contracts.noneDesc")}
+                              </p>
+                            </div>
+                            <Button variant="hero" size="sm" asChild disabled={isPendingApproval} className={isPendingApproval ? "opacity-50 pointer-events-none" : ""}>
+                              <Link to="/contracts/new">{t("dashboard.contracts.createFirst")}</Link>
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {activeContracts.map((c: any) => (
+                              <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </TabsContent>
+
+                    <TabsContent value="history">
+                      {(() => {
+                        const historyContracts = myContracts.filter(c => ["completed", "cancelled"].includes(c.status));
+                        const filtered = contractFilter === "all" ? historyContracts : historyContracts.filter(c => c.status === contractFilter);
+                        
+                        return historyContracts.length === 0 ? (
+                          <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center px-4">
+                            <p className="text-muted-foreground italic">{t("dashboard.contracts.noSpecific", { filter: "history" })}</p>
+                          </div>
+                        ) : (
+                          <div className="glass-card overflow-hidden">
+                            <div className="p-4 border-b border-border/50 flex justify-between items-center bg-muted/20">
+                              <h3 className="font-bold text-[10px] uppercase tracking-widest text-muted-foreground">{t("common.filter.history")}</h3>
+                              <div className="flex gap-2">
+                                {["all", "completed", "cancelled"].map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() => setContractFilter(s)}
+                                    className={cn(
+                                      "px-3 py-1 rounded-full text-[10px] font-bold border transition-all uppercase tracking-tighter",
+                                      contractFilter === s ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border"
+                                    )}
+                                  >
+                                    {t(`common.status.${s}`, { defaultValue: s })}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/30 text-[10px] uppercase font-black text-muted-foreground border-b border-border/50">
+                                  <tr>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.title", { defaultValue: "Project" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.other", { defaultValue: "Professional" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.amount", { defaultValue: "Amount" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.status", { defaultValue: "Status" })}</th>
+                                    <th className="px-4 py-3 text-right">{t("common.actions", { defaultValue: "Actions" })}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                  {filtered.map((c: any) => (
+                                    <tr key={c.id} className="hover:bg-muted/20 transition-colors group">
+                                      <td className="px-4 py-4 font-bold">{c.title}</td>
+                                      <td className="px-4 py-4 text-xs opacity-70">{c.otherPartyName}</td>
+                                      <td className="px-4 py-4 font-mono font-bold text-xs">${c.total_amount.toLocaleString()}</td>
+                                      <td className="px-4 py-4">
+                                        <span className={cn(
+                                          "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                                          c.status === 'completed' ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground"
+                                        )}>
+                                          {t(`common.status.${c.status}`, { defaultValue: c.status })}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-4 text-right">
+                                        <Button variant="ghost" size="sm" asChild className="h-8 px-2">
+                                          <Link to={`/contracts/${c.id}`}>{t("common.view")}</Link>
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </TabsContent>
+                  </Tabs>
                 </TabsContent>
 
-                {/* Invitations Tab */}
-                <TabsContent value="invitations">
-                  {loadingContracts ? (
-                    <p className="text-muted-foreground">{t("common.loading")}</p>
-                  ) : myInvitations.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center px-4">
-                      <MessageSquareText className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
-                      <p className="mb-1">{t("dashboard.invitations.none")}</p>
-                      <p className="text-xs opacity-80 dark:opacity-60">{t("dashboard.invitations.noneDesc")}</p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {myInvitations.map((c: any) => (
-                        <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
+                {/* My Jobs Main Tab */}
+                <TabsContent value="jobs" className="space-y-6">
+                  <Tabs value={activeJobSubTab} onValueChange={setActiveJobSubTab}>
+                    <TabsList className="flex w-max gap-2 bg-transparent h-auto p-0 mb-4">
+                      <TabsTrigger value="invitations" className="h-9 px-4 rounded-full border border-border data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive data-[state=active]:border-destructive/50 transition-all text-xs font-bold uppercase tracking-wider">
+                        {t("dashboard.tabs.invitations")}
+                        {myInvitations.length > 0 && (
+                          <span className="ml-2 bg-destructive/20 text-destructive px-1.5 rounded-full text-[10px]">
+                            {myInvitations.length}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="active" className="h-9 px-4 rounded-full border border-border data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary/50 transition-all text-xs font-bold uppercase tracking-wider">
+                        {t("common.status.active")}
+                        {myJobs.filter(c => ["active", "accepted", "disputed"].includes(c.status)).length > 0 && (
+                          <span className="ml-2 bg-primary/20 text-primary px-1.5 rounded-full text-[10px]">
+                            {myJobs.filter(c => ["active", "accepted", "disputed"].includes(c.status)).length}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="history" className="h-9 px-4 rounded-full border border-border data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary/50 transition-all text-xs font-bold uppercase tracking-wider">
+                        {t("common.filter.history", { defaultValue: "History" })}
+                        {myJobs.filter(c => ["completed", "cancelled"].includes(c.status)).length > 0 && (
+                          <span className="ml-2 bg-primary/20 text-primary px-1.5 rounded-full text-[10px]">
+                            {myJobs.filter(c => ["completed", "cancelled"].includes(c.status)).length}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
 
-                {/* My Jobs Tab */}
-                <TabsContent value="jobs">
-                  {/* Filter chips */}
-                  {myJobs.length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {["all", "active", "accepted", "pending", "completed", "cancelled"].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setJobFilter(s)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize ${
-                            jobFilter === s
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-card text-muted-foreground border-border hover:border-primary/40"
-                          }`}
-                        >
-                          {s === "all" ? `${t("common.filter.all")} (${myJobs.length})` : t(`common.status.${s}`, { defaultValue: s })}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {loadingContracts ? (
-                    <p className="text-muted-foreground">{t("common.loading")}</p>
-                  ) : myJobs.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed">
-                      <Plus className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
-                      <p>{t("dashboard.jobs.none")}</p>
-                      <p className="text-xs mt-1 opacity-80 dark:opacity-60">{t("dashboard.jobs.noneDesc")}</p>
-                    </div>
-                  ) : (() => {
-                    const filtered = jobFilter === "all" ? myJobs : myJobs.filter(c => c.status === jobFilter);
-                    return filtered.length === 0 ? (
-                      <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground text-sm">
-                        {t("dashboard.jobs.noSpecific", { filter: jobFilter })}
-                      </div>
-                    ) : (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {filtered.map((c: any) => (
-                          <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
-                        ))}
-                      </div>
-                    );
-                  })()}
+                    <TabsContent value="invitations">
+                      {loadingContracts ? (
+                        <p className="text-muted-foreground">{t("common.loading")}</p>
+                      ) : myInvitations.length === 0 ? (
+                        <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center px-4">
+                          <MessageSquareText className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
+                          <p className="mb-1 text-sm font-medium">{t("dashboard.invitations.none")}</p>
+                          <p className="text-xs opacity-80 dark:opacity-60">{t("dashboard.invitations.noneDesc")}</p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {myInvitations.map((c: any) => (
+                            <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="active">
+                      {(() => {
+                        const activeJobs = myJobs.filter(c => ["active", "accepted", "disputed"].includes(c.status));
+                        return activeJobs.length === 0 ? (
+                          <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center">
+                            <Plus className="mb-2 h-8 w-8 opacity-40 dark:opacity-20" />
+                            <p className="text-sm font-medium">{t("dashboard.jobs.none")}</p>
+                            <p className="text-xs mt-1 opacity-80 dark:opacity-60">{t("dashboard.jobs.noneDesc")}</p>
+                          </div>
+                        ) : (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {activeJobs.map((c: any) => (
+                              <ContractCard key={c.id} {...c} disabled={isPendingApproval} />
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </TabsContent>
+
+                    <TabsContent value="history">
+                      {(() => {
+                        const filtered = jobFilter === "all" ? historyJobs : historyJobs.filter(c => c.status === jobFilter);
+                        
+                        return historyJobs.length === 0 ? (
+                          <div className="flex h-40 flex-col items-center justify-center glass-card border-dashed text-center px-4">
+                            <p className="text-muted-foreground italic">{t("dashboard.jobs.noSpecific", { filter: "history" })}</p>
+                          </div>
+                        ) : (
+                          <div className="glass-card overflow-hidden">
+                            <div className="p-4 border-b border-border/50 flex justify-between items-center bg-muted/20">
+                              <h3 className="font-bold text-[10px] uppercase tracking-widest text-muted-foreground">{t("common.filter.history")}</h3>
+                              <div className="flex gap-2">
+                                {["all", "completed", "cancelled"].map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() => setJobFilter(s)}
+                                    className={cn(
+                                      "px-3 py-1 rounded-full text-[10px] font-bold border transition-all uppercase tracking-tighter",
+                                      jobFilter === s ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border"
+                                    )}
+                                  >
+                                    {t(`common.status.${s}`, { defaultValue: s })}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/30 text-[10px] uppercase font-black text-muted-foreground border-b border-border/50">
+                                  <tr>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.title", { defaultValue: "Project" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.other", { defaultValue: "Client" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.amount", { defaultValue: "Amount" })}</th>
+                                    <th className="px-4 py-3">{t("dashboard.history.table.status", { defaultValue: "Status" })}</th>
+                                    <th className="px-4 py-3 text-right">{t("common.actions", { defaultValue: "Actions" })}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                  {filtered.map((c: any) => (
+                                    <tr key={c.id} className="hover:bg-muted/20 transition-colors group">
+                                      <td className="px-4 py-4 font-bold">{c.title}</td>
+                                      <td className="px-4 py-4 text-xs opacity-70">{c.otherPartyName}</td>
+                                      <td className="px-4 py-4 font-mono font-bold text-xs">${c.total_amount.toLocaleString()}</td>
+                                      <td className="px-4 py-4">
+                                        <span className={cn(
+                                          "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter",
+                                          c.status === 'completed' ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground"
+                                        )}>
+                                          {c.status === 'cancelled' ? t("common.status.rejected", { defaultValue: "Rejected" }) : t(`common.status.${c.status}`, { defaultValue: c.status })}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-4 text-right">
+                                        <Button variant="ghost" size="sm" asChild className="h-8 px-2">
+                                          <Link to={`/contracts/${c.id}`}>{t("common.view")}</Link>
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </TabsContent>
+                  </Tabs>
                 </TabsContent>
               </Tabs>
             </div>

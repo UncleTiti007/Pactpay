@@ -638,8 +638,12 @@ export default function AdminDashboard() {
         <div className="mb-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">{t("admin.title")}</h1>
-              <p className="text-muted-foreground mt-1">{t("admin.subtitle")}</p>
+              <h1 className="text-3xl font-extrabold tracking-tight text-foreground bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                {t("admin.title")}
+              </h1>
+              <p className="text-muted-foreground mt-1 text-sm font-medium">
+                {t("admin.subtitle")}
+              </p>
             </div>
             
             <div className="flex items-center gap-4">
@@ -712,75 +716,75 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div 
               className={cn(
-                "p-4 rounded-xl border transition-all cursor-pointer",
-                stats.openDisputes > 0 ? "bg-destructive/5 border-destructive/20 hover:bg-destructive/10" : "bg-muted/10 border-border"
+                "p-5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:shadow-md",
+                stats.openDisputes > 0 ? "bg-destructive/5 border-destructive/20 hover:border-destructive/40" : "bg-card border-border hover:border-primary/20"
               )}
               onClick={() => setActiveTab("disputes")}
             >
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg", stats.openDisputes > 0 ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground")}>
+              <div className="flex items-center gap-4">
+                <div className={cn("p-2.5 rounded-xl", stats.openDisputes > 0 ? "bg-destructive/20 text-destructive shadow-inner" : "bg-muted text-muted-foreground")}>
                   <AlertTriangle className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.openDisputes")}</p>
-                  <p className="text-xl font-bold">{stats.openDisputes}</p>
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">{t("admin.stats.openDisputes")}</p>
+                  <p className="text-2xl font-black">{stats.openDisputes}</p>
                 </div>
               </div>
             </div>
 
             <div 
               className={cn(
-                "p-4 rounded-xl border transition-all cursor-pointer",
-                stats.pendingKYCs > 0 ? "bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10" : "bg-muted/10 border-border"
+                "p-5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:shadow-md",
+                stats.pendingKYCs > 0 ? "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40" : "bg-card border-border hover:border-primary/20"
               )}
               onClick={() => setActiveTab("users")}
             >
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg", stats.pendingKYCs > 0 ? "bg-amber-500/20 text-amber-500" : "bg-muted text-muted-foreground")}>
+              <div className="flex items-center gap-4">
+                <div className={cn("p-2.5 rounded-xl", stats.pendingKYCs > 0 ? "bg-amber-500/20 text-amber-500 shadow-inner" : "bg-muted text-muted-foreground")}>
                   <ShieldAlert className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.kycPending")}</p>
-                  <p className="text-xl font-bold">{stats.pendingKYCs}</p>
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">{t("admin.stats.kycPending")}</p>
+                  <p className="text-2xl font-black">{stats.pendingKYCs}</p>
                 </div>
               </div>
             </div>
 
             <div 
               className={cn(
-                "p-4 rounded-xl border transition-all cursor-pointer",
-                stats.pendingWithdrawals > 0 ? "bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10" : "bg-muted/10 border-border"
+                "p-5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:shadow-md",
+                stats.pendingWithdrawals > 0 ? "bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/40" : "bg-card border-border hover:border-primary/20"
               )}
               onClick={() => setActiveTab("transactions")}
             >
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg", stats.pendingWithdrawals > 0 ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground")}>
+              <div className="flex items-center gap-4">
+                <div className={cn("p-2.5 rounded-xl", stats.pendingWithdrawals > 0 ? "bg-emerald-500/20 text-emerald-500 shadow-inner" : "bg-muted text-muted-foreground")}>
                   <ArrowRightLeft className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.pendingPayouts")}</p>
-                  <p className="text-xl font-bold">{stats.pendingWithdrawals}</p>
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">{t("admin.stats.pendingPayouts")}</p>
+                  <p className="text-2xl font-black">{stats.pendingWithdrawals}</p>
                 </div>
               </div>
             </div>
 
             <div 
               className={cn(
-                "p-4 rounded-xl border transition-all cursor-pointer",
-                stats.unreadTickets > 0 ? "bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10" : "bg-muted/10 border-border"
+                "p-5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:shadow-md",
+                stats.unreadTickets > 0 ? "bg-blue-500/5 border-blue-500/20 hover:border-blue-500/40" : "bg-card border-border hover:border-primary/20"
               )}
               onClick={() => setActiveTab("support")}
             >
-              <div className="flex items-center gap-3">
-                <div className={cn("p-2 rounded-lg", stats.unreadTickets > 0 ? "bg-blue-500/20 text-blue-500" : "bg-muted text-muted-foreground")}>
+              <div className="flex items-center gap-4">
+                <div className={cn("p-2.5 rounded-xl", stats.unreadTickets > 0 ? "bg-blue-500/20 text-blue-500 shadow-inner" : "bg-muted text-muted-foreground")}>
                   <MessageSquareText className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">{t("admin.stats.supportNeeded")}</p>
-                  <p className="text-xl font-bold">{stats.unreadTickets}</p>
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/80">{t("admin.stats.supportNeeded")}</p>
+                  <p className="text-2xl font-black">{stats.unreadTickets}</p>
                 </div>
               </div>
             </div>
@@ -835,12 +839,23 @@ export default function AdminDashboard() {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="horizontal-scroll-indicator">
-            <TabsList className="bg-card glass-card inline-flex w-auto min-w-full">
-              <TabsTrigger value="disputes">{t("admin.tabs.disputes")} ({disputes.filter(d => d.status === 'open').length})</TabsTrigger>
-              <TabsTrigger value="contracts">{t("admin.tabs.contracts")} ({contracts.length})</TabsTrigger>
-              <TabsTrigger value="users">{t("admin.tabs.users")} ({users.length})</TabsTrigger>
-              <TabsTrigger value="transactions">{t("admin.tabs.transactions")} ({transactions.length})</TabsTrigger>
-              <TabsTrigger value="support">{t("admin.tabs.support")} ({tickets.length})</TabsTrigger>
+            <TabsList className="bg-muted/30 p-1 rounded-xl flex w-full md:w-max h-auto gap-1">
+              {["disputes", "contracts", "users", "transactions", "support"].map((tab) => (
+                <TabsTrigger 
+                  key={tab}
+                  value={tab} 
+                  className="px-6 py-2.5 rounded-lg text-sm font-bold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg hover:bg-primary/5"
+                >
+                  {t(`admin.tabs.${tab}`)} 
+                  <span className="ml-2 py-0.5 px-2 rounded-full bg-black/10 text-[10px] opacity-70">
+                    {tab === "disputes" ? disputes.filter(d => d.status === 'open').length : 
+                     tab === "contracts" ? contracts.length :
+                     tab === "users" ? users.length :
+                     tab === "transactions" ? transactions.length :
+                     tickets.length}
+                  </span>
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
